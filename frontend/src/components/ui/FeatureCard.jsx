@@ -13,7 +13,7 @@ const FeatureCard = ({ icon: Icon, title, description, index = 0 }) => (
     viewport={{ once: true, margin: '-40px' }}
     transition={{ duration: 0.5, delay: index * 0.07, ease: [0.25, 0.46, 0.45, 0.94] }}
     whileHover={{ y: -4, scale: 1.01 }}
-    className="group relative rounded-[18px] bg-surface-dark border border-border-dark p-6 flex flex-col gap-4 cursor-default transition-shadow duration-300 hover:shadow-card-dark hover:border-accent/30"
+    className="group relative rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-100 dark:border-border-dark p-6 flex flex-col gap-4 cursor-default transition-all duration-300 hover:shadow-lg dark:hover:shadow-card-dark hover:border-accent/30 dark:hover:border-accent/30"
   >
     {/* Subtle corner glow on hover */}
     <div className="absolute inset-0 rounded-[18px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
@@ -24,10 +24,10 @@ const FeatureCard = ({ icon: Icon, title, description, index = 0 }) => (
     </div>
 
     <div className="relative">
-      <h3 className="font-heading font-semibold text-[15px] text-txt-primary-dark mb-2 leading-snug">
+      <h3 className="font-heading font-semibold text-[15px] text-txt-primary-light dark:text-txt-primary-dark mb-2 leading-snug">
         {title}
       </h3>
-      <p className="text-sm text-txt-secondary-dark leading-relaxed">
+      <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed">
         {description}
       </p>
     </div>

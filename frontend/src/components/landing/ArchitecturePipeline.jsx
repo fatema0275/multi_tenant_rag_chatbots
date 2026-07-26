@@ -43,17 +43,17 @@ const ArchitecturePipeline = () => (
                 className={`flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl border px-3 py-2.5 transition-colors duration-200 min-w-[90px] text-center ${
                   node.accent
                     ? 'bg-accent/10 border-accent/40 hover:border-accent/70'
-                    : 'bg-surface-dark border-border-dark hover:border-zinc-600'
+                    : 'bg-white dark:bg-surface-dark border-zinc-200 dark:border-border-dark hover:border-zinc-300 dark:hover:border-zinc-600'
                 }`}
               >
                 <div
                   className={`text-[11px] font-semibold leading-tight ${
-                    node.accent ? 'text-accent' : 'text-txt-primary-dark'
+                    node.accent ? 'text-accent' : 'text-txt-primary-light dark:text-txt-primary-dark'
                   }`}
                 >
                   {node.label}
                 </div>
-                <div className="text-[9px] text-txt-secondary-dark leading-tight">{node.sub}</div>
+                <div className="text-[9px] text-txt-secondary-light dark:text-txt-secondary-dark leading-tight">{node.sub}</div>
               </motion.div>
 
               {i < PIPELINE_NODES.length - 1 && (
@@ -118,7 +118,7 @@ const ArchitecturePipeline = () => (
     </div>
 
     {/* Scroll hint for narrow screens */}
-    <div className="text-[11px] text-txt-secondary-dark text-center mt-2 md:hidden">
+    <div className="text-[11px] text-txt-secondary-light dark:text-txt-secondary-dark text-center mt-2 md:hidden">
       ← Scroll to see full pipeline →
     </div>
   </div>

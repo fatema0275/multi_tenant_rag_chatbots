@@ -16,7 +16,7 @@ const PipelineStep = ({ icon: Icon, step, title, description, isLast = false }) 
   >
     {/* Step bubble */}
     <div className="relative mb-4">
-      <div className="w-14 h-14 rounded-2xl bg-surface-dark border border-border-dark flex items-center justify-center text-accent shadow-card-dark">
+      <div className="w-14 h-14 rounded-2xl bg-white dark:bg-surface-dark border border-zinc-200 dark:border-border-dark flex items-center justify-center text-accent shadow-card dark:shadow-card-dark group-hover:border-accent/30 transition-colors duration-200">
         {Icon && <Icon className="w-6 h-6" strokeWidth={1.6} />}
       </div>
       {/* Step number */}
@@ -25,10 +25,10 @@ const PipelineStep = ({ icon: Icon, step, title, description, isLast = false }) 
       </div>
     </div>
 
-    <h3 className="font-heading font-semibold text-[14px] text-txt-primary-dark mb-1.5 leading-snug max-w-[140px]">
+    <h3 className="font-heading font-semibold text-[14px] text-txt-primary-light dark:text-txt-primary-dark mb-1.5 leading-snug max-w-[140px]">
       {title}
     </h3>
-    <p className="text-[13px] text-txt-secondary-dark leading-relaxed max-w-[150px]">
+    <p className="text-[13px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed max-w-[150px]">
       {description}
     </p>
   </motion.div>

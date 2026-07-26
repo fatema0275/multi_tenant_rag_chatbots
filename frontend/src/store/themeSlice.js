@@ -10,10 +10,10 @@ const getInitialTheme = () => {
     }
     return saved;
   }
-  
-  // Default to light mode
-  document.documentElement.classList.remove('dark');
-  return 'light';
+
+  // Default to dark mode — landing page is designed dark-first.
+  document.documentElement.classList.add('dark');
+  return 'dark';
 };
 
 const themeSlice = createSlice({

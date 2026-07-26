@@ -90,6 +90,32 @@ export const deleteWebsite = createAsyncThunk(
   }
 );
 
+/**
+ * triggerCrawl — POST /api/websites/:id/crawl
+ * Starts an async crawl job for a verified website.
+ * Returns { jobId, status, message } on success.
+ */
+export const triggerCrawl = createAsyncThunk(
+  'websites/triggerCrawl',
+  async (websiteId, { getState, rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/websites/${websiteId}/crawl`, {
+        method: 'POST',
+        headers: getAuthHeaders(getState),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return rejectWithValue(data.error || 'Failed to start crawl');
+      }
+      return { websiteId, ...data };
+    } catch (err) {
+      // Surface network-level errors (e.g. Python bridge unreachable)
+      return rejectWithValue(err.message || 'Network error — crawler may be unreachable');
+    }
+  }
+);
+
 const websiteSlice = createSlice({
   name: 'websites',
   initialState: {
@@ -100,6 +126,15 @@ const websiteSlice = createSlice({
   reducers: {
     clearWebsiteError: (state) => {
       state.error = null;
+    },
+    /**
+     * Optimistically update a single website's crawl_status in the list.
+     * Dispatched by StartCrawlCard after a successful triggerCrawl call.
+     */
+    patchCrawlStatus: (state, action) => {
+      const { websiteId, crawl_status } = action.payload;
+      const site = state.websites.find((w) => w.id === websiteId);
+      if (site) site.crawl_status = crawl_status;
     },
   },
   extraReducers: (builder) => {
@@ -146,9 +181,14 @@ const websiteSlice = createSlice({
       })
       .addCase(deleteWebsite.rejected, (state, action) => {
         state.error = action.payload;
+      })
+      // Crawl — update crawl_status on the matching website row
+      .addCase(triggerCrawl.fulfilled, (state, action) => {
+        const site = state.websites.find((w) => w.id === action.payload.websiteId);
+        if (site) site.crawl_status = action.payload.status ?? 'crawling';
       });
   },
 });
 
-export const { clearWebsiteError } = websiteSlice.actions;
+export const { clearWebsiteError, patchCrawlStatus } = websiteSlice.actions;
 export default websiteSlice.reducer;

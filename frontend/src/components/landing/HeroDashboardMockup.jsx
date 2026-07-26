@@ -25,9 +25,9 @@ const HeroDashboardMockup = () => (
          style={{ background: 'radial-gradient(ellipse at 60% 40%, #22C55E 0%, transparent 65%)' }} />
 
     {/* Outer container — simulates a dashboard window */}
-    <div className="relative rounded-2xl bg-[#0E0E12] border border-[#27272A] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.7)] overflow-hidden">
+    <div className="relative rounded-2xl bg-white dark:bg-[#0E0E12] border border-zinc-200 dark:border-[#27272A] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_32px_80px_-12px_rgba(0,0,0,0.7)] overflow-hidden">
       {/* Window chrome */}
-      <div className="flex items-center gap-1.5 px-4 py-3 border-b border-[#27272A] bg-[#131318]">
+      <div className="flex items-center gap-1.5 px-4 py-3 border-b border-zinc-100 dark:border-[#27272A] bg-zinc-50 dark:bg-[#131318]">
         <div className="w-2.5 h-2.5 rounded-full bg-[#3F3F46]" />
         <div className="w-2.5 h-2.5 rounded-full bg-[#3F3F46]" />
         <div className="w-2.5 h-2.5 rounded-full bg-[#3F3F46]" />

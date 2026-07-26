@@ -4,6 +4,7 @@ const express = require('express');
 const { z } = require('zod');
 const authMiddleware = require('../middleware/auth');
 const websiteService = require('../services/websiteService');
+const crawlService = require('../services/crawlService');
 
 const router = express.Router();
 
@@ -91,6 +92,29 @@ router.delete('/:id', async (req, res, next) => {
 
     const result = await websiteService.deleteWebsite(req.userId, websiteId);
     return res.status(200).json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+/**
+ * POST /api/websites/:id/crawl
+ * Trigger a crawl job for a verified website.
+ * Responds immediately with { jobId, status, message }.
+ * The actual crawl runs asynchronously via the Python bridge.
+ */
+router.post('/:id/crawl', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) {
+      return res.status(400).json({ error: 'Invalid website ID' });
+    }
+
+    const result = await crawlService.triggerCrawl(req.userId, websiteId);
+    return res.status(202).json(result);
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({ error: err.message });

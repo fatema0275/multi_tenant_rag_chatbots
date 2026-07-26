@@ -124,11 +124,11 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex bg-page-dark">
+    <div className="min-h-screen flex bg-page-light dark:bg-page-dark transition-colors duration-200">
       <LeftPanel />
 
       {/* Right — form panel */}
-      <div className="flex flex-col flex-1 max-w-full lg:max-w-[480px] min-h-screen justify-center px-8 sm:px-12 py-10">
+      <div className="flex flex-col flex-1 max-w-full lg:max-w-[480px] min-h-screen justify-center px-8 sm:px-12 py-10 bg-page-light dark:bg-page-dark">
         {/* Mobile logo */}
         <div className="flex items-center gap-2 mb-10 lg:hidden">
           <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center">
@@ -147,8 +147,8 @@ const Login = () => {
             transition={{ duration: 0.45 }}
             className="mb-8"
           >
-            <h1 className="font-heading text-3xl font-bold text-white mb-2">Welcome back</h1>
-            <p className="text-sm text-txt-secondary-dark">
+            <h1 className="font-heading text-3xl font-bold text-zinc-900 dark:text-white mb-2">Welcome back</h1>
+            <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark">
               Log in to manage your chatbots and knowledge bases.
             </p>
           </motion.div>
@@ -181,7 +181,7 @@ const Login = () => {
           >
             {/* Email */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2" htmlFor="login-email">
+              <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2" htmlFor="login-email">
                 Email
               </label>
               <div className="relative">
@@ -205,7 +205,7 @@ const Login = () => {
             {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-widest" htmlFor="login-password">
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest" htmlFor="login-password">
                   Password
                 </label>
                 <Link
@@ -252,7 +252,7 @@ const Login = () => {
                 onChange={handleChange}
                 className="w-4 h-4 rounded border-border-dark bg-[#0E0E12] accent-accent cursor-pointer"
               />
-              <span className="text-sm text-txt-secondary-dark group-hover:text-txt-primary-dark transition-colors">
+              <span className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark group-hover:text-txt-primary-light dark:group-hover:text-txt-primary-dark transition-colors">
                 Keep me logged in
               </span>
             </label>
@@ -290,7 +290,7 @@ const Login = () => {
               id="login-google"
               disabled
               title="Google Sign-In coming soon"
-              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-[18px] border border-border-dark bg-[#0E0E12] text-zinc-500 text-sm font-medium cursor-not-allowed opacity-50"
+              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-[18px] border border-zinc-200 dark:border-border-dark bg-zinc-50 dark:bg-[#0E0E12] text-zinc-400 dark:text-zinc-500 text-sm font-medium cursor-not-allowed opacity-50"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -303,7 +303,7 @@ const Login = () => {
           </motion.form>
 
           {/* Register link */}
-          <p className="mt-8 text-sm text-txt-secondary-dark text-center">
+          <p className="mt-8 text-sm text-txt-secondary-light dark:text-txt-secondary-dark text-center">
             No account yet?{' '}
             <Link to="/signup" className="text-accent hover:text-accent-dark font-semibold transition-colors">
               Sign up free

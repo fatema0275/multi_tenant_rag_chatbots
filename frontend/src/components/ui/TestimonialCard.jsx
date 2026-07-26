@@ -23,7 +23,7 @@ const TestimonialCard = ({ quote, name, role, company, rating = 5, index = 0 }) 
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.5, delay: index * 0.12, ease: 'easeOut' }}
-      className="rounded-[18px] bg-surface-dark border border-border-dark p-6 flex flex-col gap-4 shadow-card-dark"
+      className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-100 dark:border-border-dark p-6 flex flex-col gap-4 shadow-card dark:shadow-card-dark"
     >
       {/* Stars */}
       <div className="flex gap-0.5">
@@ -33,12 +33,12 @@ const TestimonialCard = ({ quote, name, role, company, rating = 5, index = 0 }) 
       </div>
 
       {/* Quote */}
-      <p className="text-sm text-txt-secondary-dark leading-relaxed flex-1">
+      <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed flex-1">
         "{quote}"
       </p>
 
       {/* Author */}
-      <div className="flex items-center gap-3 pt-2 border-t border-border-dark">
+      <div className="flex items-center gap-3 pt-2 border-t border-zinc-100 dark:border-border-dark">
         <div
           className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-[#09090B] flex-shrink-0"
           style={{ background: color }}
@@ -46,8 +46,8 @@ const TestimonialCard = ({ quote, name, role, company, rating = 5, index = 0 }) 
           {initials}
         </div>
         <div>
-          <div className="text-sm font-semibold text-txt-primary-dark">{name}</div>
-          <div className="text-xs text-txt-secondary-dark">
+          <div className="text-sm font-semibold text-txt-primary-light dark:text-txt-primary-dark">{name}</div>
+          <div className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark">
             {role}{company ? `, ${company}` : ''}
           </div>
         </div>

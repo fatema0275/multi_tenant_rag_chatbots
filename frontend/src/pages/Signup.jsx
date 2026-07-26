@@ -147,206 +147,206 @@ const Signup = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col justify-center bg-page-dark px-4 sm:px-0 py-12">
+    <div className="min-h-screen flex bg-page-light dark:bg-page-dark transition-colors duration-200">
       {/* Mobile logo */}
-      <div className="flex items-center justify-center gap-2 mb-10">
-        <Link to="/" className="flex items-center gap-2">
+      <div className="flex flex-col flex-1 max-w-full lg:max-w-[500px] min-h-screen justify-center px-8 sm:px-12 py-10 bg-page-light dark:bg-page-dark">
+        <Link to="/" className="flex items-center gap-2 mb-10 self-start">
           <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center">
             <Zap className="w-4 h-4 text-[#09090B]" strokeWidth={2.5} />
           </div>
-          <span className="font-heading font-bold text-lg text-white">
+          <span className="font-heading font-bold text-lg text-zinc-900 dark:text-white">
             Site<span className="text-accent">Mind</span>
           </span>
         </Link>
-      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-[440px] mx-auto"
-      >
-        {/* Heading */}
-        <div className="text-center mb-8">
-          <h1 className="font-heading text-3xl font-bold text-white mb-2">Create your account</h1>
-          <p className="text-sm text-txt-secondary-dark">
-            Register and deploy your first chatbot in minutes.
-          </p>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-[440px]"
+        >
+          {/* Heading */}
+          <div className="mb-8">
+            <h1 className="font-heading text-3xl font-bold text-zinc-900 dark:text-white mb-2">Create your account</h1>
+            <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark">
+              Register and deploy your first chatbot in minutes.
+            </p>
+          </div>
 
-        {/* Card */}
-        <div className="rounded-[18px] bg-surface-dark border border-border-dark p-8 shadow-card-dark">
-          {/* Error banner */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                key="error"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-5 overflow-hidden"
-              >
-                <div className="flex items-start gap-2.5 p-3.5 rounded-[14px] bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{error}</span>
+          {/* Card */}
+          <div className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-200 dark:border-border-dark p-8 shadow-sm dark:shadow-card-dark">
+            {/* Error banner */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-5 overflow-hidden"
+                >
+                  <div className="flex items-start gap-2.5 p-3.5 rounded-[14px] bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
+              {/* Full name + Email */}
+              {fields.map(({ id, name, type, label, placeholder, icon: Icon, autoComplete }) => (
+                <div key={name}>
+                  <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2" htmlFor={id}>
+                    {label}
+                  </label>
+                  <div className="relative">
+                    <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
+                    <input
+                      id={id}
+                      type={type}
+                      name={name}
+                      value={formData[name]}
+                      onChange={handleChange}
+                      placeholder={placeholder}
+                      autoComplete={autoComplete}
+                      className={`input-field pl-10 ${formErrors[name] ? 'border-red-500 focus:border-red-500' : ''}`}
+                    />
+                  </div>
+                  {formErrors[name] && (
+                    <p className="mt-1.5 text-xs text-red-400 font-medium">{formErrors[name]}</p>
+                  )}
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              ))}
 
-          <form onSubmit={handleSubmit} noValidate className="space-y-4">
-            {/* Full name + Email */}
-            {fields.map(({ id, name, type, label, placeholder, icon: Icon, autoComplete }) => (
-              <div key={name}>
-                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2" htmlFor={id}>
-                  {label}
+              {/* Password with strength meter */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2" htmlFor="signup-password">
+                  Password
                 </label>
                 <div className="relative">
-                  <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
                   <input
-                    id={id}
-                    type={type}
-                    name={name}
-                    value={formData[name]}
+                    id="signup-password"
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={formData.password}
                     onChange={handleChange}
-                    placeholder={placeholder}
-                    autoComplete={autoComplete}
-                    className={`input-field pl-10 ${formErrors[name] ? 'border-red-500 focus:border-red-500' : ''}`}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    className={`input-field pl-10 pr-10 ${formErrors.password ? 'border-red-500 focus:border-red-500' : ''}`}
                   />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword((p) => !p)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-                {formErrors[name] && (
-                  <p className="mt-1.5 text-xs text-red-400 font-medium">{formErrors[name]}</p>
+                {formErrors.password && (
+                  <p className="mt-1.5 text-xs text-red-400 font-medium">{formErrors.password}</p>
+                )}
+                <AnimatePresence>
+                  {formData.password && <PasswordStrengthMeter password={formData.password} />}
+                </AnimatePresence>
+              </div>
+
+              {/* Confirm password */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2" htmlFor="signup-confirm">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
+                  <input
+                    id="signup-confirm"
+                    type={showConfirm ? 'text' : 'password'}
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="Repeat password"
+                    autoComplete="new-password"
+                    className={`input-field pl-10 pr-10 ${formErrors.confirmPassword ? 'border-red-500 focus:border-red-500' : ''}`}
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowConfirm((p) => !p)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                    aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
+                  >
+                    {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {/* Match indicator */}
+                {formData.confirmPassword && (
+                  <div className={`flex items-center gap-1.5 mt-1.5 text-xs font-medium ${
+                    formData.password === formData.confirmPassword ? 'text-accent' : 'text-red-400'
+                  }`}>
+                    {formData.password === formData.confirmPassword
+                      ? <><CheckCircle2 className="w-3.5 h-3.5" /> Passwords match</>
+                      : <>{formErrors.confirmPassword || 'Passwords do not match'}</>
+                    }
+                  </div>
                 )}
               </div>
-            ))}
 
-            {/* Password with strength meter */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2" htmlFor="signup-password">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-                <input
-                  id="signup-password"
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="At least 8 characters"
-                  autoComplete="new-password"
-                  className={`input-field pl-10 pr-10 ${formErrors.password ? 'border-red-500 focus:border-red-500' : ''}`}
-                />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => setShowPassword((p) => !p)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+              {/* Terms */}
+              <div>
+                <label className="flex items-start gap-2.5 cursor-pointer group" htmlFor="signup-terms">
+                  <input
+                    id="signup-terms"
+                    type="checkbox"
+                    name="terms"
+                    checked={formData.terms}
+                    onChange={handleChange}
+                    className="w-4 h-4 mt-0.5 rounded border-zinc-300 dark:border-border-dark bg-white dark:bg-[#0E0E12] accent-accent cursor-pointer flex-shrink-0"
+                  />
+                  <span className="text-[13px] text-txt-secondary-light dark:text-txt-secondary-dark group-hover:text-zinc-900 dark:group-hover:text-txt-primary-dark transition-colors leading-relaxed">
+                    I agree to the{' '}
+                    <a href="#" className="text-accent hover:underline">Terms of Service</a>
+                    {' '}and{' '}
+                    <a href="#" className="text-accent hover:underline">Privacy Policy</a>
+                  </span>
+                </label>
+                {formErrors.terms && (
+                  <p className="mt-1.5 text-xs text-red-400 font-medium pl-6.5">{formErrors.terms}</p>
+                )}
               </div>
-              {formErrors.password && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium">{formErrors.password}</p>
-              )}
-              <AnimatePresence>
-                {formData.password && <PasswordStrengthMeter password={formData.password} />}
-              </AnimatePresence>
-            </div>
 
-            {/* Confirm password */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2" htmlFor="signup-confirm">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-                <input
-                  id="signup-confirm"
-                  type={showConfirm ? 'text' : 'password'}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  placeholder="Repeat password"
-                  autoComplete="new-password"
-                  className={`input-field pl-10 pr-10 ${formErrors.confirmPassword ? 'border-red-500 focus:border-red-500' : ''}`}
-                />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => setShowConfirm((p) => !p)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                  aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
-                >
-                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {/* Match indicator */}
-              {formData.confirmPassword && (
-                <div className={`flex items-center gap-1.5 mt-1.5 text-xs font-medium ${
-                  formData.password === formData.confirmPassword ? 'text-accent' : 'text-red-400'
-                }`}>
-                  {formData.password === formData.confirmPassword
-                    ? <><CheckCircle2 className="w-3.5 h-3.5" /> Passwords match</>
-                    : <>{formErrors.confirmPassword || 'Passwords do not match'}</>
-                  }
-                </div>
-              )}
-            </div>
+              {/* Submit */}
+              <button
+                type="submit"
+                id="signup-submit"
+                disabled={loading}
+                className="w-full btn-accent py-3 text-[15px] mt-1 disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating Account…
+                  </>
+                ) : (
+                  <>
+                    Create Account
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
 
-            {/* Terms */}
-            <div>
-              <label className="flex items-start gap-2.5 cursor-pointer group" htmlFor="signup-terms">
-                <input
-                  id="signup-terms"
-                  type="checkbox"
-                  name="terms"
-                  checked={formData.terms}
-                  onChange={handleChange}
-                  className="w-4 h-4 mt-0.5 rounded border-border-dark bg-[#0E0E12] accent-accent cursor-pointer flex-shrink-0"
-                />
-                <span className="text-[13px] text-txt-secondary-dark group-hover:text-txt-primary-dark transition-colors leading-relaxed">
-                  I agree to the{' '}
-                  <a href="#" className="text-accent hover:underline">Terms of Service</a>
-                  {' '}and{' '}
-                  <a href="#" className="text-accent hover:underline">Privacy Policy</a>
-                </span>
-              </label>
-              {formErrors.terms && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium pl-6.5">{formErrors.terms}</p>
-              )}
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
-              id="signup-submit"
-              disabled={loading}
-              className="w-full btn-accent py-3 text-[15px] mt-1 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Creating Account…
-                </>
-              ) : (
-                <>
-                  Create Account
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        <p className="mt-6 text-sm text-txt-secondary-dark text-center">
-          Already have an account?{' '}
-          <Link to="/login" className="text-accent hover:text-accent-dark font-semibold transition-colors">
-            Log in
-          </Link>
-        </p>
-      </motion.div>
+          <p className="mt-8 text-sm text-txt-secondary-light dark:text-txt-secondary-dark text-center">
+            Already have an account?{' '}
+            <Link to="/login" className="text-accent hover:text-accent-dark font-semibold transition-colors">
+              Log in
+            </Link>
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
 };

@@ -26,16 +26,16 @@ const SuccessState = ({ email }) => (
       <CheckCircle2 className="w-8 h-8 text-accent" />
     </motion.div>
 
-    <h2 className="font-heading text-2xl font-bold text-white mb-3">
+    <h2 className="font-heading text-2xl font-bold text-zinc-900 dark:text-white mb-3">
       Check your inbox
     </h2>
-    <p className="text-[14px] text-txt-secondary-dark leading-relaxed mb-2">
+    <p className="text-[14px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed mb-2">
       We've sent a password reset link to
     </p>
-    <p className="text-[14px] font-semibold text-txt-primary-dark mb-6 font-mono">
+    <p className="text-[14px] font-semibold text-txt-primary-light dark:text-txt-primary-dark mb-6 font-mono">
       {email}
     </p>
-    <p className="text-[13px] text-txt-secondary-dark leading-relaxed max-w-xs mx-auto">
+    <p className="text-[13px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed max-w-xs mx-auto">
       The link expires in 30 minutes. If you don't see the email, check your spam folder.
     </p>
 
@@ -47,7 +47,7 @@ const SuccessState = ({ email }) => (
         <ArrowLeft className="w-4 h-4" />
         Back to Login
       </Link>
-      <p className="text-[13px] text-txt-secondary-dark">
+      <p className="text-[13px] text-txt-secondary-light dark:text-txt-secondary-dark">
         Wrong email?{' '}
         <Link to="/forgot-password" className="text-accent hover:underline" onClick={() => window.location.reload()}>
           Try another address
@@ -84,14 +84,14 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center bg-page-dark px-4 sm:px-0 py-12">
+    <div className="min-h-screen flex flex-col justify-center bg-page-light dark:bg-page-dark px-4 sm:px-0 py-12 transition-colors duration-200">
       {/* Logo */}
       <div className="flex items-center justify-center gap-2 mb-10">
         <Link to="/" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center">
             <Zap className="w-4 h-4 text-[#09090B]" strokeWidth={2.5} />
           </div>
-          <span className="font-heading font-bold text-lg text-white">
+          <span className="font-heading font-bold text-lg text-zinc-900 dark:text-white">
             Site<span className="text-accent">Mind</span>
           </span>
         </Link>
@@ -111,17 +111,17 @@ const ForgotPassword = () => {
             >
               {/* Heading */}
               <div className="text-center mb-8">
-                <h1 className="font-heading text-3xl font-bold text-white mb-2">
+                <h1 className="font-heading text-3xl font-bold text-zinc-900 dark:text-white mb-2">
                   Reset password
                 </h1>
-                <p className="text-sm text-txt-secondary-dark leading-relaxed">
+                <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed">
                   Enter the email associated with your account and we'll 
                   send a reset link.
                 </p>
               </div>
 
               {/* Card */}
-              <div className="rounded-[18px] bg-surface-dark border border-border-dark p-8 shadow-card-dark">
+              <div className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-200 dark:border-border-dark p-8 shadow-sm dark:shadow-card-dark">
                 {/* Error */}
                 <AnimatePresence>
                   {error && (
@@ -143,7 +143,7 @@ const ForgotPassword = () => {
                 <form onSubmit={handleSubmit} noValidate className="space-y-5">
                   {/* Email field */}
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-2" htmlFor="forgot-email">
+                    <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-2" htmlFor="forgot-email">
                       Email Address
                     </label>
                     <div className="relative">
@@ -194,7 +194,7 @@ const ForgotPassword = () => {
               <div className="mt-6 text-center">
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1.5 text-sm text-txt-secondary-dark hover:text-txt-primary-dark transition-colors"
+                  className="inline-flex items-center gap-1.5 text-sm text-txt-secondary-light dark:text-txt-secondary-dark hover:text-txt-primary-light dark:hover:text-txt-primary-dark transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   Back to Login

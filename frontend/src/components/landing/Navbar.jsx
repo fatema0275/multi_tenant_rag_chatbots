@@ -7,11 +7,11 @@ import { logout } from '../../store/authSlice';
 import { Sun, Moon, Menu, X, Zap, LogOut, LayoutDashboard } from 'lucide-react';
 
 const NAV_LINKS = [
-  { label: 'Features',     href: '/#features'      },
-  { label: 'How It Works', href: '/#how-it-works'  },
-  { label: 'Architecture', href: '/#architecture'  },
-  { label: 'Pricing',      href: '/#pricing'       },
-  { label: 'Docs',         href: '/#docs'          },
+  { label: 'Features',       href: '/#features'      },
+  { label: 'How It Works',   href: '/#how-it-works'  },
+  { label: 'Architecture',   href: '/#architecture'  },
+  { label: 'Pricing',        href: '/#pricing'       },
+  { label: 'Documentation',  href: '/#docs'          },
 ];
 
 /**
@@ -49,7 +49,7 @@ const Navbar = () => {
       <header
         className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
           scrolled
-            ? 'bg-[#09090B]/80 backdrop-blur-xl border-b border-border-dark'
+            ? 'bg-white/80 dark:bg-[#09090B]/80 backdrop-blur-xl border-b border-zinc-200 dark:border-border-dark shadow-sm dark:shadow-none'
             : 'bg-transparent'
         }`}
       >
@@ -59,7 +59,7 @@ const Navbar = () => {
             <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center shadow-sm group-hover:shadow-accent/40 transition-shadow duration-200">
               <Zap className="w-4.5 h-4.5 text-[#09090B]" strokeWidth={2.5} />
             </div>
-            <span className="font-heading font-bold text-lg tracking-tight text-white">
+            <span className="font-heading font-bold text-lg tracking-tight text-zinc-900 dark:text-white">
               Site<span className="text-accent">Mind</span>
             </span>
           </Link>
@@ -70,7 +70,7 @@ const Navbar = () => {
               <button
                 key={link.label}
                 onClick={() => handleNavClick(link.href)}
-                className="px-3.5 py-2 text-sm text-txt-secondary-dark hover:text-txt-primary-dark transition-colors duration-150 rounded-lg hover:bg-white/5"
+                className="px-3.5 py-2 text-sm text-txt-secondary-light dark:text-txt-secondary-dark hover:text-txt-primary-light dark:hover:text-txt-primary-dark transition-colors duration-150 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5"
               >
                 {link.label}
               </button>
@@ -112,7 +112,7 @@ const Navbar = () => {
               <div className="hidden sm:flex items-center gap-2">
                 <Link
                   to="/login"
-                  className="px-4 py-2 text-sm font-medium text-txt-secondary-dark hover:text-txt-primary-dark transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-txt-secondary-light dark:text-txt-secondary-dark hover:text-txt-primary-light dark:hover:text-txt-primary-dark transition-colors"
                 >
                   Log in
                 </Link>
@@ -146,14 +146,14 @@ const Navbar = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="fixed top-16 inset-x-0 z-40 bg-[#09090B]/95 backdrop-blur-xl border-b border-border-dark lg:hidden"
+            className="fixed top-16 inset-x-0 z-40 bg-white/95 dark:bg-[#09090B]/95 backdrop-blur-xl border-b border-zinc-200 dark:border-border-dark lg:hidden"
           >
             <div className="px-4 py-4 flex flex-col gap-1">
               {NAV_LINKS.map((link) => (
                 <button
                   key={link.label}
                   onClick={() => handleNavClick(link.href)}
-                  className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-txt-secondary-dark hover:text-txt-primary-dark hover:bg-white/5 transition-colors"
+                  className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-txt-secondary-light dark:text-txt-secondary-dark hover:text-txt-primary-light dark:hover:text-txt-primary-dark hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors"
                 >
                   {link.label}
                 </button>
