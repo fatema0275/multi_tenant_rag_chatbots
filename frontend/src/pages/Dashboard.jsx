@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
+import { forwardRef } from 'react';
 import {
   fetchWebsites,
   addWebsite,
@@ -132,13 +133,14 @@ const UsageBar = ({ used = 0, limit = 10000 }) => {
 };
 
 /** Individual site card */
-const SiteCard = ({ site, index, onEdit, onDelete }) => {
+const SiteCard = forwardRef(({ site, index, onEdit, onDelete }, ref) => {
   const status = site.verification_status || 'verified';
   const tokensUsed = site.tokens_used ?? 0;
   const tokenLimit = site.token_limit ?? 10000;
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }}
@@ -218,7 +220,9 @@ const SiteCard = ({ site, index, onEdit, onDelete }) => {
       </div>
     </motion.div>
   );
-};
+});
+
+SiteCard.displayName = 'SiteCard';
 
 /** Skeleton card for loading state */
 const SiteCardSkeleton = ({ delay = 0 }) => (

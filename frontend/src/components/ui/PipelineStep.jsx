@@ -4,9 +4,9 @@ import { motion } from 'framer-motion';
 /**
  * PipelineStep
  * One step in the "How It Works" section.
- * Renders a numbered circle, icon, title, and one-sentence description.
+ * Renders a numbered circle, icon, and title only — no description paragraph.
  */
-const PipelineStep = ({ icon: Icon, step, title, description, isLast = false }) => (
+const PipelineStep = ({ icon: Icon, step, title, isLast = false }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     whileInView={{ opacity: 1, y: 0 }}
@@ -15,8 +15,8 @@ const PipelineStep = ({ icon: Icon, step, title, description, isLast = false }) 
     className="flex flex-col items-center text-center relative"
   >
     {/* Step bubble */}
-    <div className="relative mb-4">
-      <div className="w-14 h-14 rounded-2xl bg-white dark:bg-surface-dark border border-zinc-200 dark:border-border-dark flex items-center justify-center text-accent shadow-card dark:shadow-card-dark group-hover:border-accent/30 transition-colors duration-200">
+    <div className="relative mb-5">
+      <div className="w-14 h-14 rounded-2xl bg-white dark:bg-surface-dark border border-zinc-200 dark:border-border-dark flex items-center justify-center text-accent shadow-card dark:shadow-card-dark transition-colors duration-200">
         {Icon && <Icon className="w-6 h-6" strokeWidth={1.6} />}
       </div>
       {/* Step number */}
@@ -25,12 +25,9 @@ const PipelineStep = ({ icon: Icon, step, title, description, isLast = false }) 
       </div>
     </div>
 
-    <h3 className="font-heading font-semibold text-[14px] text-txt-primary-light dark:text-txt-primary-dark mb-1.5 leading-snug max-w-[140px]">
+    <h3 className="font-heading font-semibold text-[13px] text-txt-primary-light dark:text-txt-primary-dark leading-snug max-w-[130px]">
       {title}
     </h3>
-    <p className="text-[13px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed max-w-[150px]">
-      {description}
-    </p>
   </motion.div>
 );
 

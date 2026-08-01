@@ -5,12 +5,11 @@ import {
   ArrowRight, Play, ShieldCheck, Globe, Database, Bot, Brain,
   RefreshCw, MousePointerClick, BarChart3, ThumbsUp, Lock,
   FileSearch, Cpu, Layers, Zap, ArrowUpRight, Github, BookOpen,
-  FileText, Mail
+  FileText, Mail, CheckCircle2, MessageSquare, FlaskConical,
 } from 'lucide-react';
 
 import Navbar from '../components/landing/Navbar';
 import HeroDashboardMockup from '../components/landing/HeroDashboardMockup';
-import ArchitecturePipeline from '../components/landing/ArchitecturePipeline';
 import FeatureCard from '../components/ui/FeatureCard';
 import PipelineStep from '../components/ui/PipelineStep';
 import StatCounter from '../components/ui/StatCounter';
@@ -54,49 +53,34 @@ const HOW_IT_WORKS = [
 
 const FEATURES = [
   {
+    icon: FlaskConical,
+    title: 'Entailment Verification',
+    tagline: 'Every answer checked against source — no hallucinations.',
+  },
+  {
     icon: Lock,
-    title: 'User Auth & Website Management',
-    description: 'Manage every registered site from one dashboard, all gated behind domain ownership verification before any crawling begins.',
-  },
-  {
-    icon: Globe,
-    title: 'Website Crawling & Content Processing',
-    description: 'Discovers pages via sitemap and controlled traversal, renders JS-heavy pages with a headless browser, then strips navs, ads, and boilerplate down to clean article content.',
-  },
-  {
-    icon: Database,
-    title: 'Knowledge Base Generation',
-    description: 'Splits extracted content into semantically meaningful chunks and embeds them into a vector store that\'s fully isolated per tenant — no cross-tenant bleed.',
-  },
-  {
-    icon: Bot,
-    title: 'AI Chatbot Generation & Deployment',
-    description: 'Spins up a branded, embeddable widget per site automatically, adopting that site\'s own colors and logo without any manual configuration.',
-  },
-  {
-    icon: Brain,
-    title: 'Intelligent Query Processing',
-    description: 'Retrieves only from that tenant\'s content, generates an answer, then runs an entailment check against the source chunks — low-confidence or unsupported claims trigger a transparent fallback instead of a guess.',
-  },
-  {
-    icon: RefreshCw,
-    title: 'Knowledge Synchronization',
-    description: 'Periodically re-crawls for changes and reprocesses only what changed. Site owners can also manually add or edit knowledge entries at any time.',
+    title: 'Tenant Isolation',
+    tagline: 'RLS-enforced per-tenant storage — zero cross-tenant bleed.',
   },
   {
     icon: MousePointerClick,
-    title: 'Visual Pointing',
-    description: 'When the chatbot answers, the live webpage scrolls to and highlights the exact source paragraph the answer came from — showing visitors the evidence, not just the claim.',
+    title: 'Visual Source Pointing',
+    tagline: 'Highlights the exact paragraph the answer came from.',
+  },
+  {
+    icon: Bot,
+    title: 'Embeddable Widget',
+    tagline: 'One script tag — branded and live in minutes.',
+  },
+  {
+    icon: RefreshCw,
+    title: 'Auto Sync',
+    tagline: 'Re-crawls on a schedule and reprocesses only what changed.',
   },
   {
     icon: BarChart3,
-    title: 'Analytics & Monitoring',
-    description: 'Conversation volume, common questions, low-confidence query patterns, and full crawl and sync history in one dashboard.',
-  },
-  {
-    icon: ThumbsUp,
-    title: 'Feedback Loop',
-    description: 'Visitors thumbs-up or thumbs-down any answer, feeding a human signal that is tracked separately from the automated entailment confidence score.',
+    title: 'Analytics Dashboard',
+    tagline: 'Query volume, low-confidence patterns, and crawl history.',
   },
 ];
 
@@ -165,7 +149,7 @@ const FAQS = [
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 const Section = ({ id, children, className = '' }) => (
-  <section id={id} className={`py-20 sm:py-28 ${className}`}>
+  <section id={id} className={`py-12 sm:py-16 ${className}`}>
     <div className="max-w-7xl mx-auto px-4 sm:px-6">
       {children}
     </div>
@@ -197,7 +181,7 @@ const Landing = () => (
     <Navbar />
 
     {/* ══════════════════════════════════════════════════════════════ HERO */}
-    <section className="relative pt-32 pb-20 sm:pt-40 sm:pb-28 overflow-hidden">
+    <section className="relative pt-20 pb-10 sm:pt-24 sm:pb-12 overflow-hidden">
       {/* Grid background */}
       <div className="absolute inset-0 pointer-events-none"
            style={{
@@ -209,25 +193,15 @@ const Landing = () => (
            style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(34,197,94,0.06) 0%, transparent 70%)' }} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-20">
+        <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-10">
           {/* Left copy */}
           <div className="flex-1 text-center lg:text-left">
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.05 }}
-              className="inline-flex items-center gap-2 mb-6 px-3.5 py-1.5 rounded-full border border-accent/25 bg-accent/8 text-accent text-xs font-semibold"
-            >
-              <Zap className="w-3 h-3" />
-              Entailment-Verified RAG — Zero Hallucination Policy
-            </motion.div>
 
             <motion.h1
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="font-heading font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.1] tracking-tight text-zinc-900 dark:text-white"
+              className="font-heading font-bold text-3xl sm:text-4xl lg:text-5xl leading-[1.1] tracking-tight text-zinc-900 dark:text-white"
             >
               Your website,{' '}
               <span className="text-gradient">answered accurately</span>
@@ -238,20 +212,17 @@ const Landing = () => (
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.18 }}
-              className="mt-6 text-[17px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed max-w-xl mx-auto lg:mx-0"
+              className="mt-4 text-[15px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed max-w-lg mx-auto lg:mx-0"
             >
-              Register your site, verify domain ownership, and get back an AI chatbot 
-              that answers <em>strictly</em> from your site's own content. 
-              Before any answer reaches your visitors, an entailment model checks every 
-              claim against the retrieved source — if a claim isn't supported, 
-              the system returns a transparent fallback instead of guessing.
+              Register your site, verify domain ownership, and get back a chatbot that answers
+              <em> strictly</em> from your content — with every claim entailment-checked before delivery.
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.28 }}
-              className="mt-8 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start"
+              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start"
             >
               <Link
                 to="/signup"
@@ -276,7 +247,7 @@ const Landing = () => (
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="mt-10 flex flex-wrap gap-x-6 gap-y-2 justify-center lg:justify-start"
+              className="mt-5 flex flex-wrap gap-x-5 gap-y-2 justify-center lg:justify-start"
             >
               {[
                 'DNS-verified ownership',
@@ -293,7 +264,7 @@ const Landing = () => (
           </div>
 
           {/* Right mockup */}
-          <div className="flex-shrink-0 w-full lg:w-auto">
+          <div className="flex-shrink-0 w-full lg:w-auto flex justify-center">
             <HeroDashboardMockup />
           </div>
         </div>
@@ -302,14 +273,9 @@ const Landing = () => (
 
     {/* ════════════════════════════════════════════════ HOW IT WORKS */}
     <Section id="how-it-works" className="border-t border-zinc-100 dark:border-border-dark">
-      <div className="text-center mb-14">
+      <div className="text-center mb-8">
         <SectionLabel>How It Works</SectionLabel>
         <SectionTitle>From URL to live chatbot in six steps</SectionTitle>
-        <SectionSubtitle>
-          Every step has a specific job. Domain verification before crawling, 
-          robots.txt compliance during discovery, RLS isolation at storage time, 
-          entailment checking before every response.
-        </SectionSubtitle>
       </div>
 
       {/* Steps grid with animated connectors */}
@@ -328,16 +294,15 @@ const Landing = () => (
 
     {/* ═══════════════════════════════════════════════════ FEATURES */}
     <Section id="features" className="border-t border-zinc-100 dark:border-border-dark">
-      <div className="text-center mb-14">
+      <div className="text-center mb-10">
         <SectionLabel>Platform Features</SectionLabel>
-        <SectionTitle>Nine modules. One coherent system.</SectionTitle>
+        <SectionTitle>Everything you need, nothing you don't.</SectionTitle>
         <SectionSubtitle>
-          Each module is designed around a specific job to be done — from crawl to 
-          conversation, all enforcing tenant isolation throughout.
+          Six capabilities that cover the full journey from crawl to verified answer.
         </SectionSubtitle>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {FEATURES.map((feat, i) => (
           <FeatureCard key={feat.title} {...feat} index={i} />
         ))}
@@ -346,24 +311,131 @@ const Landing = () => (
 
     {/* ══════════════════════════════════════════════ ARCHITECTURE */}
     <Section id="architecture" className="border-t border-zinc-100 dark:border-border-dark">
-      <div className="mb-10">
-        <SectionLabel>Architecture</SectionLabel>
-        <SectionTitle>The full engineering pipeline</SectionTitle>
-        <SectionSubtitle>
-          Every stage in the pipeline below corresponds to a real system component — 
-          from DNS verification through entailment checking to the embeddable widget.
-          Tenant isolation and hallucination resistance are enforced at the infrastructure level, 
-          not bolted on after the fact.
-        </SectionSubtitle>
+      <div className="text-center mb-7">
+        <SectionLabel>How It Works</SectionLabel>
+        <SectionTitle>Up and running in four steps.</SectionTitle>
       </div>
-      <div className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-100 dark:border-border-dark p-6 shadow-card dark:shadow-card-dark">
-        <ArchitecturePipeline />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* ── Left panel: numbered steps ── */}
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+          className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-100 dark:border-border-dark p-5 flex flex-col gap-3.5"
+        >
+          <div className="text-[10px] font-bold uppercase tracking-widest text-txt-secondary-light dark:text-txt-secondary-dark mb-0.5">Steps</div>
+          {[
+            { n: 1, title: 'Register your site',  sub: 'Add a domain to your SiteMind account.' },
+            { n: 2, title: 'Verify ownership',     sub: 'DNS TXT record or file upload — no crawl before this.' },
+            { n: 3, title: 'Crawl, chunk & embed', sub: 'Automatic ingestion into your isolated knowledge base.' },
+            { n: 4, title: 'Embed the widget',     sub: 'One script tag — live, branded, answering instantly.' },
+          ].map(({ n, title, sub }, i) => (
+            <motion.div
+              key={n}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.35, delay: i * 0.08 }}
+              className="flex items-start gap-3"
+            >
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-accent flex items-center justify-center text-[#09090B] text-[10px] font-bold shadow-sm">
+                {n}
+              </div>
+              <div>
+                <div className="text-[13px] font-semibold text-txt-primary-light dark:text-txt-primary-dark leading-snug">{title}</div>
+                <div className="text-[11px] text-txt-secondary-light dark:text-txt-secondary-dark mt-0.5 leading-snug">{sub}</div>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* ── Right panel: widget demo ── */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1 }}
+          className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-100 dark:border-border-dark p-5 flex flex-col gap-3"
+        >
+          {/* Demo header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center">
+                <Zap className="w-2.5 h-2.5 text-[#09090B]" strokeWidth={2.5} />
+              </div>
+              <span className="text-[12px] font-semibold text-txt-primary-light dark:text-txt-primary-dark">SiteMind Chat</span>
+            </div>
+            <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">● Live</span>
+          </div>
+
+          {/* Chat bubbles */}
+          <div className="flex flex-col gap-2 flex-1">
+            {/* User message */}
+            <div className="flex justify-end">
+              <div className="max-w-[80%] px-3 py-2 rounded-[12px] rounded-br-sm bg-accent text-[#09090B] text-[12px] font-medium leading-snug">
+                What's your refund policy?
+              </div>
+            </div>
+
+            {/* AI answer */}
+            <div className="flex items-start gap-2">
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center mt-0.5">
+                <Zap className="w-2.5 h-2.5 text-accent" strokeWidth={2.5} />
+              </div>
+              <div className="flex-1 rounded-[12px] rounded-tl-sm bg-zinc-50 dark:bg-[#111115] border border-zinc-100 dark:border-border-dark px-3 py-2">
+                <p className="text-[12px] text-txt-primary-light dark:text-txt-primary-dark leading-snug">
+                  Full refund within <strong>30 days</strong> of purchase — no questions asked.
+                </p>
+                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-accent">
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                  <span>Verified from your docs</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Second user message */}
+            <div className="flex justify-end">
+              <div className="max-w-[80%] px-3 py-2 rounded-[12px] rounded-br-sm bg-accent text-[#09090B] text-[12px] font-medium leading-snug">
+                Does it cover digital products?
+              </div>
+            </div>
+
+            {/* AI answer 2 */}
+            <div className="flex items-start gap-2">
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center mt-0.5">
+                <Zap className="w-2.5 h-2.5 text-accent" strokeWidth={2.5} />
+              </div>
+              <div className="flex-1 rounded-[12px] rounded-tl-sm bg-zinc-50 dark:bg-[#111115] border border-zinc-100 dark:border-border-dark px-3 py-2">
+                <p className="text-[12px] text-txt-primary-light dark:text-txt-primary-dark leading-snug">
+                  Yes — the 30-day policy covers all products, including digital downloads.
+                </p>
+                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-accent">
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                  <span>Verified from your docs</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Input bar mockup */}
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-[10px] border border-zinc-200 dark:border-border-dark bg-zinc-50 dark:bg-[#0E0E12]">
+            <MessageSquare className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+            <span className="flex-1 text-[11px] text-zinc-400">Ask a question…</span>
+            <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center">
+              <ArrowRight className="w-3 h-3 text-[#09090B]" />
+            </div>
+          </div>
+        </motion.div>
+
       </div>
     </Section>
 
     {/* ════════════════════════════════════════════════════ PRICING */}
     <Section id="pricing" className="border-t border-zinc-100 dark:border-border-dark">
-      <div className="text-center mb-14">
+      <div className="text-center mb-10">
         <SectionLabel>Pricing</SectionLabel>
         <SectionTitle>Simple, transparent pricing</SectionTitle>
         <SectionSubtitle>
@@ -472,7 +544,7 @@ const Landing = () => (
 
     {/* ══════════════════════════════════════════ TESTIMONIALS */}
     <Section id="testimonials" className="border-t border-zinc-100 dark:border-border-dark">
-      <div className="text-center mb-14">
+      <div className="text-center mb-10">
         <SectionLabel>What teams say</SectionLabel>
         <SectionTitle>Trust from teams that ship docs</SectionTitle>
       </div>
@@ -486,7 +558,7 @@ const Landing = () => (
     {/* ══════════════════════════════════════════════════════ FAQ */}
     <Section id="faq" className="border-t border-zinc-100 dark:border-border-dark">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <SectionLabel>FAQ</SectionLabel>
           <SectionTitle>Common questions</SectionTitle>
         </div>
