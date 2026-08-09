@@ -18,4 +18,24 @@ build/
 
 # OS
 .DS_Store
+.DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Celery
+celery.log
+celery.pid
+
+# Playwright
+playwright-report/

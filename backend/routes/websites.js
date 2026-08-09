@@ -123,4 +123,81 @@ router.post('/:id/crawl', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/websites/:id/crawl-jobs
+ * Returns the most recent crawl jobs for a verified website (max 10).
+ * Used by the dashboard's Crawl Status panel to display logs.
+ */
+router.get('/:id/crawl-jobs', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) {
+      return res.status(400).json({ error: 'Invalid website ID' });
+    }
+
+    // Verify ownership via Sequelize
+    const { Website } = require('../models');
+    const website = await Website.findOne({
+      where: { id: websiteId, user_id: req.userId }
+    });
+    if (!website) {
+      return res.status(403).json({ error: 'Website not found or unauthorized' });
+    }
+
+    // Query crawl_jobs directly via raw SQL (the model isn't defined yet).
+    // We try the full column list first (requires migrations 015 to have run).
+    // If any column doesn't exist yet (pre-migration state), we fall back to
+    // the original 5 columns from migration 003 so the panel still works.
+    const { sequelize } = require('../models');
+
+    let jobs;
+    try {
+      // Full query — post-migration columns present
+      [jobs] = await sequelize.query(
+        `SELECT id, status,
+                COALESCE(crawl_type::text, null)     AS crawl_type,
+                COALESCE(pages_found,     null)      AS pages_found,
+                COALESCE(pages_crawled,   null)      AS pages_crawled,
+                COALESCE(pages_failed,    null)      AS pages_failed,
+                COALESCE(pages_skipped,   null)      AS pages_skipped,
+                started_at, completed_at,
+                COALESCE(error_message,   null)      AS error_message
+         FROM   crawl_jobs
+         WHERE  website_id = :websiteId
+         ORDER  BY id DESC
+         LIMIT  10`,
+        { replacements: { websiteId }, type: sequelize.QueryTypes.SELECT }
+      );
+    } catch (sqlErr) {
+      // Column does not exist → migrations haven't been applied yet.
+      // Postgres leaves the connection in an error state after a failed query,
+      // so we must issue a ROLLBACK before the fallback SELECT will work.
+      if (sqlErr.message && sqlErr.message.includes('does not exist')) {
+        try { await sequelize.query('ROLLBACK'); } catch (_) { /* ignore */ }
+        [jobs] = await sequelize.query(
+          `SELECT id, status, started_at, completed_at,
+                  null AS crawl_type,
+                  null AS pages_found,
+                  null AS pages_crawled,
+                  null AS pages_failed,
+                  null AS pages_skipped,
+                  null AS error_message
+           FROM   crawl_jobs
+           WHERE  website_id = :websiteId
+           ORDER  BY id DESC
+           LIMIT  10`,
+          { replacements: { websiteId }, type: sequelize.QueryTypes.SELECT }
+        );
+      } else {
+        throw sqlErr; // re-throw unrelated errors
+      }
+    }
+
+    return res.status(200).json(Array.isArray(jobs) ? jobs : [jobs].filter(Boolean));
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+

@@ -14,6 +14,8 @@ const { Website } = require('../models');
  *   correct HTTP status without a catch-all 500.
  */
 
+// Default points at the Python crawl service (ml-service) running locally.
+// Override with CRAWL_BRIDGE_URL env var in production.
 const BRIDGE_URL = process.env.CRAWL_BRIDGE_URL || null;
 
 /**
@@ -36,9 +38,12 @@ const triggerCrawl = async (userId, websiteId) => {
   }
 
   // 2. Gate crawl on verification_status
-  if (website.verification_status && website.verification_status !== 'verified') {
+  // BUG FIX: Original condition `status && status !== 'verified'` was falsy
+  // when verification_status was null/undefined, silently allowing unverified
+  // sites through.  Correct check: the field must be exactly 'verified'.
+  if (website.verification_status !== 'verified') {
     const err = new Error(
-      `Cannot crawl an unverified website (current status: ${website.verification_status}). ` +
+      `Cannot crawl an unverified website (current status: ${website.verification_status ?? 'unknown'}). ` +
       'Complete domain verification first.'
     );
     err.statusCode = 422;
@@ -48,6 +53,7 @@ const triggerCrawl = async (userId, websiteId) => {
   // 3. Forward to the Python bridge (if configured)
   if (BRIDGE_URL) {
     try {
+      // POST to the Flask crawl service endpoint
       const res = await fetch(`${BRIDGE_URL}/crawl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

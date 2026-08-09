@@ -1,0 +1,35 @@
+# ============================================================
+# SiteMind Crawl Service — Python dependencies
+# ============================================================
+# Install with: pip install -r requirements-crawl.txt
+# For the embedding service (Module 3), see requirements-embeddings.txt
+# ============================================================
+
+# Web framework + task queue
+flask==3.0.3
+celery[redis]==5.4.0
+redis==5.0.8
+
+# HTTP fetching
+requests==2.32.3
+
+# Robots.txt parsing (stdlib urllib.robotparser is used, no extra dep)
+
+# HTML/Sitemap parsing
+lxml==5.3.0
+beautifulsoup4==4.12.3
+
+# JS-rendered page fallback
+playwright==1.47.0
+
+# Content extraction — strips nav/ads/boilerplate
+trafilatura==1.12.2
+
+# PostgreSQL (direct connection to Supabase)
+psycopg2-binary==2.9.9
+
+# Environment config
+python-dotenv==1.0.1
+
+# Utilities
+certifi==2024.8.30

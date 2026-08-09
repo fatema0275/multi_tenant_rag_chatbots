@@ -14,6 +14,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import SkeletonBlock from '../components/ui/SkeletonBlock';
 import toast from 'react-hot-toast';
 import StartCrawlCard from '../components/ui/StartCrawlCard';
+import CrawlStatusPanel from '../components/ui/CrawlStatusPanel';
 import {
   Globe,
   Plus,
@@ -495,6 +496,9 @@ const Dashboard = () => {
 
         {/* ── Start Crawl card ─────────────────────────────────── */}
         <StartCrawlCard />
+
+        {/* ── Crawl Job Logs panel ─────────────────────────────── */}
+        <CrawlStatusPanel />
 
         {/* ── Add Website form ─────────────────────────────────── */}
         <motion.div
