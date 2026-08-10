@@ -15,6 +15,10 @@ Redis must be running before either process starts:
     # Or locally:   redis-server
 """
 
+import sys, os
+sys.path.insert(0, r"C:\Python312\lib\site-packages")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from crawl_service.app import create_app
 from crawl_service.config import cfg
 

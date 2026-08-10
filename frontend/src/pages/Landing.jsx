@@ -16,7 +16,7 @@ import StatCounter from '../components/ui/StatCounter';
 import FAQItem from '../components/ui/FAQItem';
 import TestimonialCard from '../components/ui/TestimonialCard';
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
+// data
 
 const HOW_IT_WORKS = [
   {

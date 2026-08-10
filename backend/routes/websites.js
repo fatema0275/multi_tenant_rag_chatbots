@@ -8,7 +8,36 @@ const crawlService = require('../services/crawlService');
 
 const router = express.Router();
 
-// Apply auth middleware to all website routes
+/**
+ * POST /api/websites/:id/store-chunks
+ * Internal endpoint called after Module 2 clean page extraction to process and store chunks.
+ */
+router.post('/:id/store-chunks', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    const { pageUrl, pageTitle, pageText, domSelector } = req.body;
+
+    const { storePageChunks } = require('../services/knowledgeBase');
+
+    try {
+      await storePageChunks({
+        websiteId,
+        pageUrl,
+        pageTitle,
+        pageText,
+        domSelector: domSelector || null,
+      });
+    } catch (chunkErr) {
+      console.error(`[KnowledgeBase] Error storing chunks for ${pageUrl}:`, chunkErr);
+    }
+
+    return res.status(200).json({ status: 'ok' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Apply auth middleware to all website routes below
 router.use(authMiddleware);
 
 const websiteSchema = z.object({
@@ -200,4 +229,5 @@ router.get('/:id/crawl-jobs', async (req, res, next) => {
 });
 
 module.exports = router;
+
 

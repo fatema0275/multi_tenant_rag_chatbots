@@ -310,6 +310,24 @@ def _process_page(
         log_page_outcome(job_id, url, "success")
         increment_job_counter(job_id, "pages_crawled")
         logger.info("Crawled and persisted: %s (%d chars)", url, len(text))
+
+        # Wire Module 3 storePageChunks downstream call
+        try:
+            import os, requests
+            node_backend_url = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
+            requests.post(
+                f"{node_backend_url}/api/websites/{website_id}/store-chunks",
+                json={
+                    "pageUrl": url,
+                    "pageTitle": title,
+                    "pageText": text,
+                    "domSelector": None,
+                },
+                timeout=15,
+            )
+        except Exception as kb_err:
+            logger.error("Failed to store chunks for %s: %s", url, kb_err)
+
         return "success"
     else:
         log_page_outcome(job_id, url, "failed", "No content extracted from page")
