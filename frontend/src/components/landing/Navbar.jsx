@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 import { toggleTheme } from '../../store/themeSlice';
 import { logout } from '../../store/authSlice';
+import LogoutConfirmModal from '../ui/LogoutConfirmModal';
 import { Sun, Moon, Menu, X, Zap, LogOut, LayoutDashboard } from 'lucide-react';
 
 const NAV_LINKS = [
@@ -24,6 +26,7 @@ const Navbar = () => {
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 16);
@@ -46,6 +49,11 @@ const Navbar = () => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
       }, 80);
     }
+  };
+
+  const handleConfirmLogout = () => {
+    dispatch(logout());
+    toast.success('Logged out successfully');
   };
 
   return (
@@ -109,8 +117,9 @@ const Navbar = () => {
                   Dashboard
                 </Link>
                 <button
-                  onClick={() => dispatch(logout())}
+                  onClick={() => setShowLogoutModal(true)}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm text-txt-secondary-dark hover:text-txt-primary-dark hover:bg-white/5 transition-colors"
+                  id="navbar-logout-btn"
                 >
                   <LogOut className="w-4 h-4" />
                   Log out
@@ -170,8 +179,9 @@ const Navbar = () => {
                       <LayoutDashboard className="w-4 h-4" /> Dashboard
                     </Link>
                     <button
-                      onClick={() => { dispatch(logout()); setMobileOpen(false); }}
+                      onClick={() => { setMobileOpen(false); setShowLogoutModal(true); }}
                       className="px-3 py-2.5 rounded-lg text-sm font-medium text-txt-secondary-dark hover:bg-white/5 transition-colors flex items-center gap-2"
+                      id="mobile-navbar-logout-btn"
                     >
                       <LogOut className="w-4 h-4" /> Log out
                     </button>
@@ -191,6 +201,13 @@ const Navbar = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Logout confirmation modal */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+      />
     </>
   );
 };

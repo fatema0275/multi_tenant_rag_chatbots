@@ -12,6 +12,7 @@ import {
 import { logout } from '../store/authSlice';
 import ThemeToggle from '../components/ThemeToggle';
 import SkeletonBlock from '../components/ui/SkeletonBlock';
+import LogoutConfirmModal from '../components/ui/LogoutConfirmModal';
 import toast from 'react-hot-toast';
 import StartCrawlCard from '../components/ui/StartCrawlCard';
 import CrawlStatusPanel from '../components/ui/CrawlStatusPanel';
@@ -276,6 +277,9 @@ const Dashboard = () => {
   const [deleteSite, setDeleteSite] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  /* logout confirm modal */
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   useEffect(() => {
     dispatch(fetchWebsites());
   }, [dispatch]);
@@ -400,7 +404,7 @@ const Dashboard = () => {
               <span className="font-medium">{user?.name || user?.email}</span>
             </div>
             <button
-              onClick={() => dispatch(logout())}
+              onClick={() => setShowLogoutModal(true)}
               className="p-2 rounded-lg text-txt-secondary-light dark:text-txt-secondary-dark hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
               title="Log out"
               id="dashboard-logout"
@@ -817,6 +821,16 @@ const Dashboard = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Logout confirm modal */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={() => {
+          dispatch(logout());
+          toast.success('Logged out successfully');
+        }}
+      />
 
     </div>
   );
