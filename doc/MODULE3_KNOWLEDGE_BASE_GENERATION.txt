@@ -1,0 +1,141 @@
+===============================================================================
+MODULE 3: KNOWLEDGE BASE GENERATION
+COMPLETE STEP-BY-STEP TECHNICAL IMPLEMENTATION & ARCHITECTURE DOCUMENTATION
+===============================================================================
+
+1. OVERVIEW & MODULE ARCHITECTURE
+-------------------------------------------------------------------------------
+Module 3 is the knowledge indexing and vector storage pipeline of the SiteMind system. It transforms clean, extracted web page text into semantically chunked passages, generates dense 384-dimensional vector embeddings, and persists them into PostgreSQL using the `pgvector` extension.
+
+Key Objectives:
+- Segment raw web page text into optimal semantic chunks using LangChain.js `RecursiveCharacterTextSplitter` (chunk size: 500 characters, chunk overlap: 50 characters).
+- Generate vector embeddings using the `all-MiniLM-L6-v2` Sentence-Transformer model served via a dedicated Python FastAPI microservice (`services/embedding-service`).
+- Store vector embeddings in PostgreSQL `document_chunks` table using `vector(384)` datatype with metadata (page URL, page title, DOM selector).
+- Enforce strict multi-tenant database isolation using PostgreSQL Row-Level Security (RLS) policies (`app.current_website_id`).
+- Build an HNSW (Hierarchical Navigable Small World) index with `vector_cosine_ops` for fast vector similarity search during RAG query resolution.
+
+Technology Stack:
+- Text Chunking: LangChain.js `@langchain/textsplitters` (`RecursiveCharacterTextSplitter`).
+- Vector Embedding Service: Python FastAPI (`services/embedding-service/main.py`) running PyTorch & `sentence-transformers` (`all-MiniLM-L6-v2`).
+- Node.js Embedding Client: `backend/services/embeddingClient.js` (HTTP REST client).
+- Knowledge Base Pipeline: `backend/services/knowledgeBase.js`.
+- Vector Storage & RLS: PostgreSQL + `pgvector` extension via Sequelize transaction queries.
+
+
+2. DATABASE SCHEMA & PGVECTOR CONFIGURATION
+-------------------------------------------------------------------------------
+The storage layer is defined in migration `backend/migrations/20260101000017-setup-pgvector-document-chunks.js`:
+
+2.1 `document_chunks` Table Schema
+- `id`: SERIAL PRIMARY KEY
+- `website_id`: INTEGER NOT NULL (Foreign Key referencing `websites(id)` ON DELETE CASCADE)
+- `page_url`: TEXT NOT NULL (Source page URL for attribution)
+- `page_title`: TEXT (Title of the source web page)
+- `chunk_text`: TEXT NOT NULL (Clean passage text content)
+- `embedding`: `vector(384)` (384-dimensional float vector produced by `all-MiniLM-L6-v2`)
+- `dom_selector`: TEXT (Optional CSS/DOM locator for deep linking)
+- `created_at`: TIMESTAMPTZ DEFAULT NOW()
+
+2.2 Row-Level Security (RLS) Policy
+- Table Enablement: `ALTER TABLE document_chunks ENABLE ROW LEVEL SECURITY;`
+- Policy Definition:
+  ```sql
+  CREATE POLICY document_chunks_tenant_isolation ON document_chunks
+    FOR ALL
+    USING (website_id = NULLIF(current_setting('app.current_website_id', true), '')::integer)
+    WITH CHECK (website_id = NULLIF(current_setting('app.current_website_id', true), '')::integer);
+  ```
+
+2.3 HNSW Vector Indexing
+- HNSW Index Creation:
+  ```sql
+  CREATE INDEX IF NOT EXISTS document_chunks_embedding_hnsw_idx 
+  ON document_chunks USING hnsw (embedding vector_cosine_ops);
+  ```
+- Cosine Distance (`vector_cosine_ops`): Optimized for measuring semantic similarity between text embeddings.
+
+
+3. STEP-BY-STEP IMPLEMENTATION & EXECUTION FLOW
+-------------------------------------------------------------------------------
+
+Step 1: Text Chunking Pipeline (`backend/services/chunker.js`)
+1. Receives clean page text and page metadata (`pageUrl`, `pageTitle`, `domSelector`).
+2. Instantiates LangChain `RecursiveCharacterTextSplitter`:
+   ```javascript
+   const splitter = new RecursiveCharacterTextSplitter({
+     chunkSize: 500,
+     chunkOverlap: 50,
+   });
+   ```
+3. `splitText(pageText)` recursively splits text by paragraph breaks (`\n\n`), newlines (`\n`), spaces (` `), and characters, preventing truncated mid-sentence splits.
+4. Returns array of chunk objects paired with metadata:
+   `[{ chunkText: "...", metadata: { pageUrl, pageTitle, domSelector } }]`.
+
+Step 2: Vector Embedding Microservice (`services/embedding-service/main.py`)
+1. FastAPI app loads the `all-MiniLM-L6-v2` Sentence-Transformer model ONCE into memory at server startup.
+2. Endpoint `POST /embed` accepts JSON payload `{ "texts": ["chunk 1", "chunk 2", ...] }`.
+3. Encodes text batch into NumPy floating-point matrix (`model.encode(texts, convert_to_numpy=True)`).
+4. Returns HTTP 200 JSON payload with 384-element float array vectors: `{ "embeddings": [[0.012, -0.045, ...], [...]] }`.
+
+Step 3: HTTP Embedding Client (`backend/services/embeddingClient.js`)
+1. `embedTexts(texts)` makes an HTTP POST request to `EMBEDDING_SERVICE_URL` (`http://localhost:5001/embed`).
+2. Transmits all chunks of a page in a single batched payload.
+3. Validates that the returned array length matches the input chunk count.
+
+Step 4: Knowledge Base Batch Store & RLS Context (`backend/services/knowledgeBase.js`)
+1. `storePageChunks({ websiteId, pageUrl, pageTitle, pageText, domSelector })`:
+2. Calls `chunkText()` to produce passage chunks.
+3. Calls `embedTexts()` to generate corresponding 384-dim vector embeddings.
+4. Opens a database transaction: `const t = await sequelize.transaction();`.
+5. Sets local RLS tenant session variable:
+   ```sql
+   SET LOCAL app.current_website_id = :websiteId;
+   ```
+6. Constructs a single batched SQL `INSERT` statement:
+   ```sql
+   INSERT INTO document_chunks (website_id, page_url, page_title, chunk_text, embedding, dom_selector)
+   VALUES 
+     (:websiteId, :pageUrl_0, :pageTitle_0, :chunkText_0, :embedding_0::vector, :domSelector_0),
+     (:websiteId, :pageUrl_1, :pageTitle_1, :chunkText_1, :embedding_1::vector, :domSelector_1)...;
+   ```
+7. Commits transaction (`await t.commit()`).
+8. Returns `{ chunksStored: count }`. On error, executes `t.rollback()`.
+
+
+4. TECHNICAL INTERVIEW & EVALUATION QUESTIONS (WITH MODEL ANSWERS)
+-------------------------------------------------------------------------------
+
+Q1: Why did you choose `RecursiveCharacterTextSplitter` with `chunkSize: 500` and `chunkOverlap: 50` for text chunking?
+Answer:
+`RecursiveCharacterTextSplitter` is ideal for RAG applications because it attempts to split text using natural boundaries in hierarchical order (double newlines, single newlines, spaces, characters). This preserves semantic coherence instead of arbitrarily cutting words or sentences in half. A `chunkSize` of 500 characters (~100 words) provides optimal context granularity for dense retrieval models like `all-MiniLM-L6-v2`. A `chunkOverlap` of 50 characters ensures that context near chunk boundaries isn't lost, allowing semantic concepts spanning across two chunks to remain retrievable.
+
+Q2: Why serve the `all-MiniLM-L6-v2` embedding model via a Python FastAPI microservice instead of generating embeddings inside Node.js?
+Answer:
+1. Model Efficiency & Ecosystem: PyTorch and `sentence-transformers` in Python are highly optimized for CPU/GPU vector inference.
+2. Memory Footprint: Serving the model in a dedicated FastAPI microservice loads the model into RAM once at startup, allowing multiple Node.js worker threads to share the microservice over fast local HTTP without duplicating model weights across Node runtime processes.
+3. Decoupled Scalability: The embedding microservice can be scaled independently or hosted on GPU instances in production without altering Node.js application logic.
+
+Q3: How is multi-tenant database isolation enforced for document chunks, and why use Row-Level Security (RLS)?
+Answer:
+Multi-tenant isolation is enforced at the database layer via PostgreSQL Row-Level Security (RLS). We enabled RLS on `document_chunks` and created a policy asserting `website_id = NULLIF(current_setting('app.current_website_id', true), '')::integer`. In `knowledgeBase.js`, every transaction sets `SET LOCAL app.current_website_id = :websiteId`. RLS guarantees that even if a developer forgets a `WHERE website_id = X` clause in a query, PostgreSQL automatically restricts all `SELECT`, `INSERT`, `UPDATE`, and `DELETE` operations strictly to the active tenant's data.
+
+Q4: What is HNSW, and why is `vector_cosine_ops` used in the `pgvector` index?
+Answer:
+HNSW (Hierarchical Navigable Small World) is a graph-based Approximate Nearest Neighbor (ANN) indexing algorithm. It builds multi-layer graphs to perform log-time vector similarity searches across millions of vectors without performing exhaustive brute-force scans. `vector_cosine_ops` builds the HNSW index using Cosine Distance (`1 - cosine_similarity`). Cosine distance evaluates normalized direction rather than vector length, which is optimal for text embeddings produced by `all-MiniLM-L6-v2`.
+
+Q5: How does the ingestion pipeline handle transaction failures during chunk storage?
+Answer:
+All database insertions for a page occur inside a single managed database transaction (`sequelize.transaction()`). Setting the RLS context and performing the multi-row `INSERT INTO document_chunks` happen atomically inside this transaction. If an error occurs (such as database connectivity loss or an invalid payload), the `catch` block catches the exception and calls `await t.rollback()`. This guarantees zero orphan or partially inserted chunks.
+
+Q6: How does the retrieval pipeline enable exact source attribution for generated chatbot responses?
+Answer:
+Each row in `document_chunks` stores non-vector metadata alongside the embedding, specifically `page_url`, `page_title`, and optional `dom_selector`. When the vector search returns top-K nearest chunk matches for a user query, the application receives both the passage text (`chunk_text`) and its source metadata (`page_url`, `page_title`). This enables the AI chatbot to cite exact source URLs and titles for every claim it makes.
+
+Q7: What happens to existing document chunks when a page is re-crawled and updated?
+Answer:
+When a page is updated during an incremental crawl, the new text is processed through `storePageChunks()`. Existing chunks for that specific `(website_id, page_url)` are removed or updated prior to inserting the new chunk set inside the database transaction. This prevents stale chunks from lingering in vector storage.
+
+Q8: Why batch embedding requests over HTTP instead of sending one chunk at a time?
+Answer:
+Sending one chunk per HTTP request introduces massive network round-trip overhead and underutilizes CPU/GPU matrix multiplication capabilities. `embedTexts()` batches all chunk strings of a page (e.g. 20 chunks) into a single HTTP POST request. The Python microservice passes the entire string array to `model.encode(texts)`, which vectorizes the batch simultaneously using matrix operations.
+===============================================================================

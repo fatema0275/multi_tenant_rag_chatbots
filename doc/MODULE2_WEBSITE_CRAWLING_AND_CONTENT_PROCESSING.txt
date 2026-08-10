@@ -1,0 +1,203 @@
+===============================================================================
+MODULE 2: WEBSITE CRAWLING & CONTENT PROCESSING
+COMPLETE STEP-BY-STEP TECHNICAL IMPLEMENTATION & ARCHITECTURE DOCUMENTATION
+===============================================================================
+
+1. OVERVIEW & MODULE ARCHITECTURE
+-------------------------------------------------------------------------------
+Module 2 is the core automated web scraping, content extraction, change-detection, and web page tracking pipeline of the SiteMind system.
+
+Key Objectives:
+- Discover all relevant URLs of a verified domain via XML Sitemaps or fallback multithreaded Depth-First / Breadth-First search traversal.
+- Strictly adhere to web politeness standards, including `robots.txt` parsing and per-domain rate limiting locks.
+- Render JavaScript-heavy Single Page Applications (SPAs) dynamically using Playwright headless browser escalation.
+- Cleanly extract core article content while stripping noise (navigation bars, footers, sidebars, scripts, ads, and SVGs).
+- Eliminate duplicate work and prevent unnecessary vector re-embeddings using two-stage change detection (HTTP ETag/Last-Modified HEAD checks and MD5 content hashing).
+- Track comprehensive job progress and per-page outcomes in PostgreSQL (`crawl_jobs`, `crawl_logs`, and `pages` tables).
+
+Technology Stack:
+- Orchestration & Async Task Runner: Celery + Redis task queue with hard 2-hour job limits (`ml-service/crawl_service/tasks/crawl_task.py`).
+- REST API Bridge: Flask microservice (`ml-service/crawl_service/routes/crawl.py`) and Node.js backend client (`backend/services/crawlService.js`).
+- Sitemap & XML Parser: Python `lxml` / stdlib `xml.etree.ElementTree`.
+- Web Scraping & Traversal: `requests` with `BeautifulSoup4` (`html.parser`).
+- JS Rendering Engine: Playwright (Headless Chromium) with `networkidle` event synchronization.
+- Content Extractor: `trafilatura` (primary recall-focused extractor) with `BeautifulSoup` fallback.
+- Robots Compliance: Python stdlib `urllib.robotparser` wrapped with custom 4-second timeout protection and domain caching.
+- Deduplication: Python `hashlib.md5`.
+- Database Layer: PostgreSQL via `psycopg2` thread-safe connection pooling.
+
+
+2. DATABASE SCHEMA & DATA TABLES
+-------------------------------------------------------------------------------
+Module 2 operates against three core PostgreSQL tables:
+
+2.1 `crawl_jobs` Table
+- Tracks overarching crawl execution state and aggregate counters.
+- Fields:
+  * `id`: SERIAL PRIMARY KEY
+  * `website_id`: INTEGER (FK to `websites.id`)
+  * `status`: ENUM('queued', 'running', 'completed', 'failed')
+  * `crawl_type`: VARCHAR ('first' vs 'incremental')
+  * `pages_found`: INTEGER (Total discovered URLs)
+  * `pages_crawled`: INTEGER (Successfully fetched and persisted pages)
+  * `pages_failed`: INTEGER (HTTP errors, timeouts, extraction failures)
+  * `pages_skipped`: INTEGER (Unchanged pages or robots.txt disallowed)
+  * `started_at`: TIMESTAMP WITH TIME ZONE
+  * `completed_at`: TIMESTAMP WITH TIME ZONE
+  * `error_message`: TEXT (Truncated exception traceback on failure)
+
+2.2 `crawl_logs` Table
+- Detailed per-URL audit log for every single URL processed in a job.
+- Fields:
+  * `id`: SERIAL PRIMARY KEY
+  * `crawl_job_id`: INTEGER (FK to `crawl_jobs.id`)
+  * `page_url`: TEXT
+  * `status`: ENUM('success', 'failed', 'robots_disallowed', 'timeout', 'duplicate', 'skipped_unchanged', 'removed')
+  * `error_reason`: TEXT (Explains specific failure/skip cause)
+  * `crawled_at`: TIMESTAMP WITH TIME ZONE
+
+2.3 `pages` Table
+- Central persistent store for clean page content and cache metadata.
+- Fields:
+  * `id`: SERIAL PRIMARY KEY
+  * `website_id`: INTEGER (FK to `websites.id`)
+  * `url`: TEXT (Unique per website: UNIQUE constraint on `(website_id, url)`)
+  * `title`: TEXT
+  * `raw_text`: TEXT (Clean extracted main text)
+  * `content_hash`: VARCHAR(32) (MD5 digest of clean text)
+  * `http_etag`: VARCHAR(512) (Server ETag header)
+  * `http_last_modified`: VARCHAR(512) (Server Last-Modified header)
+  * `crawl_status`: VARCHAR ('active' vs 'removed')
+  * `needs_embedding`: BOOLEAN (Triggers downstream Module 3 chunking when true)
+  * `last_crawled_at`: TIMESTAMP WITH TIME ZONE
+  * `created_at`: TIMESTAMP WITH TIME ZONE
+
+
+3. STEP-BY-STEP CRAWLING & PROCESSING WORKFLOW
+-------------------------------------------------------------------------------
+
+Step 1: API Triggering & Verification Gatekeeping
+1. Node.js backend receives `POST /api/websites/:id/crawl` request from authenticated user.
+2. `backend/services/crawlService.js` verifies:
+   - User ownership (`user_id = req.userId`).
+   - Domain verification status (`verification_status === 'verified'`). If unverified, HTTP 422 error is returned.
+3. Node.js sends HTTP POST payload to Python Flask bridge (`http://localhost:5001/crawl`).
+4. Flask inserts a row into `crawl_jobs` with status `'queued'` and dispatches Celery task `run_crawl.delay(job_id, website_id, domain)`.
+
+Step 2: Crawl Type Resolution & Job Running State
+1. Celery worker executes `run_crawl()` in `crawl_task.py`.
+2. Worker queries `pages` table for `website_id`.
+   - If existing pages are found → `crawl_type = 'incremental'`.
+   - If no pages exist → `crawl_type = 'first'`.
+3. Updates `crawl_jobs` status to `'running'` and sets `started_at = NOW()`.
+
+Step 3: URL Discovery Engine (`ml-service/crawl_service/crawler/discovery.py`)
+1. Sitemap Discovery Phase:
+   - Checks `/sitemap_index.xml` and `/sitemap.xml`.
+   - Uses `lxml.etree` / `xml.etree.ElementTree` to parse XML.
+   - Recursively unpacks nested sitemap index XML files and extracts all `<url><loc>` targets.
+2. Fallback Multithreaded BFS Link Traversal Phase:
+   - If sitemap discovery yields 0 URLs, falls back to level-by-level Breadth-First Search (BFS).
+   - Starts at `https://<domain>`.
+   - Fetches HTML, parses `<a href="...">` links with `BeautifulSoup`.
+   - Filters links: keeps same-domain links only (`_same_domain`), normalizes URLs (lowercase scheme/host, strips fragments `#`), checks `robots.txt` permission.
+   - Bounded by `MAX_DEPTH` (default: 3) and `MAX_PAGES` (default: 100).
+
+Step 4: Politeness & Rate-Limit Enforcement (`ml-service/crawl_service/crawler/robots.py`)
+1. `robots.txt` Parsing:
+   - Fetches `https://<domain>/robots.txt` with a 4-second hard timeout.
+   - Parses directives using Python stdlib `RobotFileParser`.
+   - If `robots.txt` returns 404 or HTML error page, defaults to permissive `allow_all = True`.
+   - Caches parser instance per domain in memory (`_robots_cache`).
+2. Domain Lock & Crawl-Delay:
+   - Workers share per-domain `threading.Lock` dictionaries (`_domain_locks`).
+   - Ensures only one worker thread makes requests to a given domain at any instant.
+   - Sleeps for `Crawl-delay` seconds (or default `REQUEST_DELAY = 1.0s`) between HTTP requests.
+
+Step 5: Two-Stage Fetching Engine (`ml-service/crawl_service/crawler/fetcher.py`)
+1. Stage 1 (Fast Plain HTTP Request):
+   - Sends `requests.get(url)` with custom `User-Agent: SiteMind-Bot/1.0`.
+   - Timeout set to `PAGE_TIMEOUT = 10s`.
+   - Handles 403 Forbidden and 429 Too Many Requests with exponential backoff retries.
+2. Stage 2 (Playwright Headless Chromium Escalation):
+   - Text length of Stage 1 extraction is evaluated against `MIN_TEXT_LENGTH` (default: 150 characters).
+   - If text length is under threshold (indicating client-side JS rendering / SPA), task escalates page to Playwright.
+   - Launches headless Chromium browser instance, navigates to URL, waits for `networkidle`, and extracts full rendered DOM (`page.content()`).
+   - Playwright is strictly executed inside worker processes, never blocking API threads.
+
+Step 6: Main Content Extraction & Cleaning (`ml-service/crawl_service/crawler/extractor.py`)
+1. Page Title Extraction: Extracted from BeautifulSoup HTML `<title>` tag.
+2. Trafilatura Extraction (Primary):
+   - Calls `trafilatura.extract(html, include_tables=True, favor_recall=True)`.
+   - Automatically identifies main text block and discards navbars, sidebars, headers, footers, and scripts.
+3. BeautifulSoup Extraction (Fallback):
+   - Used if `trafilatura` is unavailable or returns empty text.
+   - Decomposes unwanted tags: `<script>`, `<style>`, `<nav>`, `<footer>`, `<header>`, `<aside>`, `<noscript>`, `<svg>`.
+   - Extracts plain text with whitespace stripping.
+
+Step 7: Deduplication & Incremental Change Detection
+1. HEAD Request Check (Incremental Gate 1):
+   - For incremental crawls, sends lightweight `session.head(url)`.
+   - Compares server `ETag` and `Last-Modified` headers against stored values in `pages` table.
+   - If identical, skips GET request, bumps `last_crawled_at`, logs `skipped_unchanged`.
+2. MD5 Content Hash Check (Incremental Gate 2):
+   - Computes MD5 hash of clean text: `hashlib.md5(text.encode('utf-8')).hexdigest()`.
+   - Compares computed hash with stored `content_hash` in `pages` table.
+   - If hash matches, skips database rewrite and skips vector embedding re-generation.
+
+Step 8: Database Persistence & Downstream Integration
+1. Database Upsert:
+   - Executes `INSERT INTO pages (...) VALUES (...) ON CONFLICT (website_id, url) DO UPDATE SET title, raw_text, content_hash, http_etag, http_last_modified, crawl_status='active', needs_embedding=True, last_crawled_at=NOW()`.
+2. Counter Updates:
+   - Atomically increments `pages_crawled` on `crawl_jobs`.
+3. Audit Log Insertion:
+   - Inserts outcome record into `crawl_logs` with status `'success'`.
+4. Downstream Module 3 Trigger:
+   - Makes POST HTTP callback to Node.js backend (`/api/websites/:id/store-chunks`) with page text to trigger automatic chunking and vector embedding generation.
+
+Step 9: Removal Detection & Job Finalization
+1. Compares active URLs in database against URLs discovered in current crawl.
+2. Marks missing URLs as `crawl_status = 'removed'` in `pages` table and logs `status = 'removed'` in `crawl_logs`.
+3. Updates `crawl_jobs` status to `'completed'` with `completed_at = NOW()`.
+
+
+4. TECHNICAL INTERVIEW & EVALUATION QUESTIONS (WITH MODEL ANSWERS)
+-------------------------------------------------------------------------------
+
+Q1: How does your crawler handle Single Page Applications (SPAs) built with React, Vue, or Angular without wasting computing resources on static HTML pages?
+Answer:
+We employ a two-stage hybrid fetching strategy. Stage 1 executes a lightweight, high-speed HTTP request using `requests.get`. We extract text and evaluate it against a minimum length threshold (`MIN_TEXT_LENGTH = 150`). If Stage 1 yields sufficient text (typical for server-side rendered or static HTML), we process it immediately. Only when Stage 1 fails or returns insufficient text does the worker escalate the URL to Stage 2: launching Playwright with headless Chromium to render JS and wait for `networkidle`. This keeps crawling fast and cost-effective while still rendering JS-heavy SPAs when necessary.
+
+Q2: How does the system prevent overloading target servers or violating web scraping politeness guidelines?
+Answer:
+Politeness is enforced at three levels:
+1. `robots.txt` Compliance: Every crawl checks `/robots.txt` using `RobotFileParser` before queueing a URL. Disallowed paths are skipped and logged as `robots_disallowed`.
+2. Domain-Level Concurrency Locks: Within worker processes, we use a shared `threading.Lock` per domain. This guarantees that only one request hits a given domain at any single moment, regardless of how many threads are active.
+3. Crawl-Delay Backoff: We respect the `Crawl-delay` directive specified in `robots.txt` (or default `REQUEST_DELAY = 1.0s`) by putting the active domain thread to sleep between fetches, combined with exponential backoff on HTTP 403/429 status codes.
+
+Q3: How do you avoid re-processing, re-chunking, and re-embedding unchanged web pages during incremental crawls?
+Answer:
+We use a two-gate change-detection pipeline during incremental crawls:
+Gate 1 (Header Check): A lightweight HTTP HEAD request checks `ETag` and `Last-Modified` headers against the values stored in the `pages` table. If both match, we update `last_crawled_at`, log `skipped_unchanged`, and skip fetching the page content.
+Gate 2 (MD5 Content Hash): If headers are absent or changed, we fetch and extract clean text, then compute its MD5 digest (`hashlib.md5`). If the hash matches the stored `content_hash`, we mark the page skipped and do NOT set `needs_embedding = True`, preventing downstream re-chunking and vector database operations.
+
+Q4: What happens if a target website does not have a `sitemap.xml` file?
+Answer:
+Our discovery engine (`discovery.py`) uses a fallback approach. It first attempts to fetch `/sitemap_index.xml` and `/sitemap.xml`. If both fail or return 0 URLs, it gracefully falls back to multithreaded Breadth-First Search (BFS) link traversal. Starting at the domain root URL (`https://<domain>`), it parses HTML anchor tags (`<a href="...">`), normalizes links, filters them to match the target domain, and recursively traverses up to a configurable `MAX_DEPTH` (default: 3) and `MAX_PAGES` limit (default: 100).
+
+Q5: How do you separate main body content from headers, footers, navigation menus, and advertisements?
+Answer:
+We use `trafilatura`, an open-source Python library specifically designed for web text extraction and boilerplate removal. `trafilatura` strips navigation elements, headers, footers, sidebars, and scripts while preserving article body text and tables. As a fallback (if `trafilatura` is unavailable or yields empty output), we use `BeautifulSoup4` to explicitly decompose `<script>`, `<style>`, `<nav>`, `<footer>`, `<header>`, `<aside>`, `<noscript>`, and `<svg>` tags before extracting clean text.
+
+Q6: How do you handle database persistence and concurrency when multiple worker threads update the same target domain?
+Answer:
+We use PostgreSQL atomic `UPSERT` queries (`INSERT ... ON CONFLICT (website_id, url) DO UPDATE`) so that updating existing page records or inserting new ones is completely thread-safe. Job counters (`pages_crawled`, `pages_failed`, `pages_skipped`) are updated via atomic SQL statement increments (`UPDATE crawl_jobs SET pages_crawled = pages_crawled + 1 WHERE id = %s`).
+
+Q7: What strategy is used to detect and handle web pages that were deleted or removed from the source website between crawl runs?
+Answer:
+At the conclusion of a crawl job, `mark_pages_removed()` compares the set of URLs discovered during the current crawl run against the previously active URLs stored in the `pages` table for that `website_id`. Any previously active URL that was not discovered in the current run has its status updated to `crawl_status = 'removed'` and a log entry written to `crawl_logs`. The historical data is preserved for audit purposes rather than hard-deleted.
+
+Q8: How is security and multi-tenant domain authorization enforced prior to initiating a crawl?
+Answer:
+Crawl requests must pass through the backend Express REST API (`POST /api/websites/:id/crawl`). The `crawlService.js` middleware validates the JWT bearer token, checks that the requesting user owns the website record (`user_id = req.userId`), and asserts that `verification_status === 'verified'`. Unverified sites or unauthorized access attempts are rejected immediately with HTTP 422 or 403 status codes before any Python crawler task can be enqueued.
+===============================================================================

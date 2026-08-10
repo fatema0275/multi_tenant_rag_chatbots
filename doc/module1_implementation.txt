@@ -1,0 +1,208 @@
+===============================================================================
+MODULE 1: USER AUTHENTICATION & WEBSITE MANAGEMENT DASHBOARD
+COMPLETE STEP-BY-STEP TECHNICAL IMPLEMENTATION DOCUMENTATION
+===============================================================================
+
+1. OVERVIEW & MODULE ARCHITECTURE
+-------------------------------------------------------------------------------
+Module 1 serves as the foundational multi-tenant identity and website access control layer of the SiteMind system. It enables website owners to sign up, authenticate, and manage multiple registered domains from a unified dashboard.
+
+Key Objective:
+- Authenticate site owners securely via Email/Password or Google OAuth.
+- Provide a multi-tenant website management dashboard.
+- Enforce strict Domain Ownership Verification (via DNS TXT records, HTTP verification file uploads, or audited self-attestation) before allowing any downstream operations such as web crawling, document chunking, vector embedding storage, or AI chatbot configuration.
+
+Technology Stack:
+- Frontend: React, Vite, Redux Toolkit, Tailwind CSS, Lucide React icons.
+- Backend: Node.js, Express.js REST API.
+- Database & ORM: PostgreSQL via Sequelize ORM (models: User, Website, VerificationLog).
+- Security & Auth: JSON Web Tokens (jsonwebtoken), bcryptjs for password hashing, Google OAuth 2.0 (google-auth-library), Zod for request validation.
+
+
+2. DATABASE SCHEMA & SEQUELIZE MODELS
+-------------------------------------------------------------------------------
+The data layer consists of three interconnected PostgreSQL tables defined in `backend/models/`:
+
+2.1 User Model (`backend/models/user.js`)
+- Table Name: `users`
+- Schema Fields:
+  * `id`: INTEGER, Primary Key, Auto-Increment
+  * `email`: STRING, Non-null, Unique, Email format validated
+  * `password_hash`: STRING, Non-null
+  * `name`: STRING, Nullable
+  * `created_at`: DATE/TIMESTAMP, Default: NOW
+- Associations:
+  * HasMany `Website` (foreignKey: `user_id`, onDelete: 'CASCADE', alias: 'websites')
+  * HasMany `VerificationLog` (foreignKey: `verified_by_user_id`, onDelete: 'CASCADE', alias: 'verificationLogs')
+
+2.2 Website Model (`backend/models/website.js`)
+- Table Name: `websites`
+- Schema Fields:
+  * `id`: INTEGER, Primary Key, Auto-Increment
+  * `user_id`: INTEGER, Non-null, Foreign Key referencing `users(id)`
+  * `domain`: STRING, Non-null (sanitized domain string)
+  * `verification_token`: STRING, Nullable (32-character hexadecimal string)
+  * `verification_status`: ENUM('pending', 'verified', 'failed'), Default: 'pending' (or 'verified' under self-attested workflow)
+  * `created_at`: DATE/TIMESTAMP, Default: NOW
+- Associations:
+  * BelongsTo `User` (foreignKey: `user_id`, alias: 'user')
+  * HasMany `VerificationLog` (foreignKey: `website_id`, onDelete: 'CASCADE', alias: 'verificationLogs')
+
+2.3 VerificationLog Model (`backend/models/verificationLog.js`)
+- Table Name: `verification_logs`
+- Schema Fields:
+  * `id`: INTEGER, Primary Key, Auto-Increment
+  * `website_id`: INTEGER, Non-null, Foreign Key referencing `websites(id)`
+  * `method`: ENUM('dns', 'self_attested'), Non-null
+  * `verified_at`: DATE/TIMESTAMP, Default: NOW
+  * `verified_by_user_id`: INTEGER, Non-null, Foreign Key referencing `users(id)`
+- Associations:
+  * BelongsTo `Website` (foreignKey: `website_id`, alias: 'website')
+  * BelongsTo `User` (foreignKey: `verified_by_user_id`, alias: 'verifiedBy')
+
+
+3. BACKEND IMPLEMENTATION DETAILS
+-------------------------------------------------------------------------------
+
+3.1 Authentication Middleware (`backend/middleware/auth.js`)
+- Inspects incoming HTTP requests for an `Authorization` header formatted as `Bearer <token>`.
+- Uses `jsonwebtoken` (`jwt.verify`) with `process.env.JWT_SECRET` to decode and validate the token.
+- On success, attaches `req.userId` to the request context and invokes `next()`.
+- On failure (missing header, expired token, or invalid signature), returns HTTP 401 Unauthorized with descriptive JSON error payloads.
+
+3.2 Auth Service (`backend/services/authService.js`)
+- `signup({ email, password, name })`:
+  1. Normalizes email to lowercase and trims whitespace.
+  2. Queries `User` table for existing account with the same email. Throws 400 error if present.
+  3. Hashes plaintext password using `bcryptjs` with salt rounds = 10.
+  4. Creates new `User` record in PostgreSQL.
+  5. Generates JWT token containing `{ userId: newUser.id }` signed with 7-day expiration (`7d`).
+  6. Returns sanitized user object (with `password_hash` omitted) and token.
+
+- `login({ email, password })`:
+  1. Normalizes email.
+  2. Retrieves user record from database.
+  3. Compares incoming password with stored `password_hash` via `bcrypt.compare`.
+  4. Returns sanitized user object and newly generated JWT token on success.
+
+- `googleAuth({ idToken })`:
+  1. Verifies Google OAuth token using `OAuth2Client.verifyIdToken({ idToken, audience })`.
+  2. Extracts email and user name from token payload.
+  3. Checks if user exists; creates a new user with a cryptographically secure random password hash (`crypto.randomBytes(32).toString('hex')`) if new.
+  4. Returns sanitized user object and JWT token.
+
+- OTP Verification Flow (`requestSignupOtp`, `verifySignupOtp`, `resendSignupOtp`):
+  1. Generates 6-digit random numeric verification code.
+  2. Stores OTP payload with 10-minute expiration timestamp (`Date.now() + 10 * 60 * 1000`) in an in-memory map (`otpStore`).
+  3. Validates incoming OTP code against stored record before committing `User` creation to the database.
+
+3.3 Auth Routes (`backend/routes/auth.js`)
+- Implements Express endpoints validated using `Zod` schemas:
+  * `POST /api/auth/signup`: Normal account creation.
+  * `POST /api/auth/login`: User sign in.
+  * `POST /api/auth/google`: Google OAuth authentication.
+  * `POST /api/auth/signup/request-otp`: Request signup OTP code.
+  * `POST /api/auth/signup/verify-otp`: Verify OTP and complete registration.
+  * `POST /api/auth/signup/resend-otp`: Resend fresh OTP code.
+
+3.4 Website Service (`backend/services/websiteService.js`)
+- Domain Normalization (`cleanDomain`):
+  Strips protocol (`http://`, `https://`), trailing slashes, subpaths, and port numbers (e.g., `https://example.com/docs:8080` -> `example.com`).
+- `getUserWebsites(userId)`:
+  Fetches all website records owned by `userId` ordered by `created_at DESC`, eager loading the latest `VerificationLog`.
+- `createWebsite(userId, rawDomain)`:
+  1. Cleans domain.
+  2. Generates a random 32-character hexadecimal verification token (`crypto.randomBytes(16).toString('hex')`).
+  3. Inserts website into `websites` table.
+  4. Automatically records an audit log entry in `verification_logs` with method `self_attested`.
+- `updateWebsite(userId, websiteId, rawDomain)`:
+  Enforces multi-tenant authorization by ensuring `where: { id: websiteId, user_id: userId }` before saving domain updates.
+- `deleteWebsite(userId, websiteId)`:
+  Enforces multi-tenant authorization and performs database removal (cascading logs and metadata).
+
+3.5 Domain Verification Engine (`backend/services/dnsVerificationService.js`)
+- DNS TXT Record Lookup:
+  1. Cleans domain for DNS resolution.
+  2. Uses Node.js native `dns.promises.resolveTxt(domain)`.
+  3. Checks flattened TXT record strings for token matches (e.g. `sitemind-verification=<token>` or raw `<token>`).
+  4. Returns verification status `{ verified: boolean, recordsFound: Array }`.
+- File Upload Verification:
+  1. Makes HTTP GET request to `http://<domain>/.well-known/sitemind-verification.txt`.
+  2. Compares response text against `verification_token`.
+- Verification Gatekeeping:
+  The `verification_status` field on `websites` dictates whether downstream operations are permitted.
+
+3.6 Website Management REST Endpoints (`backend/routes/websites.js`)
+- All endpoints protected by `authMiddleware`.
+- `GET /api/websites`: List user's registered websites.
+- `POST /api/websites`: Register new domain with Zod domain validation.
+- `PUT /api/websites/:id`: Update domain details.
+- `DELETE /api/websites/:id`: Remove website record.
+- `POST /api/websites/:id/crawl`: Gatekept endpoint requiring `verification_status === 'verified'` before triggering the web crawler task.
+- `GET /api/websites/:id/crawl-jobs`: Returns recent crawl logs for a verified site.
+
+
+4. FRONTEND IMPLEMENTATION DETAILS
+-------------------------------------------------------------------------------
+
+4.1 Redux Toolkit State Management (`frontend/src/store/`)
+- Auth Slice (`frontend/src/store/authSlice.js`):
+  * State Properties: `token`, `user`, `loading`, `error`, `otpStep`, `pendingEmail`, `devOtp`.
+  * Persistence Strategy: Saves JWT token and user object in `sessionStorage` under keys `sitemind_token` and `sitemind_user` to sustain active tab sessions while clearing old legacy storage.
+  * Async Thunks: `loginUser`, `requestSignupOtp`, `verifySignupOtp`, `resendSignupOtp`, `googleLoginUser`.
+  * Reducers: `logout` (clears storage & state), `clearAuthError`, `cancelOtpStep`.
+
+- Website Slice (`frontend/src/store/websiteSlice.js`):
+  * State Properties: `websites` (Array), `loading`, `error`.
+  * Auth Authorization: Helper `getAuthHeaders(getState)` extracts `state.auth.token` and formats header `Authorization: Bearer <token>`.
+  * Async Thunks: `fetchWebsites`, `addWebsite`, `updateWebsite`, `deleteWebsite`, `triggerCrawl`.
+  * Reducers: `patchCrawlStatus` for optimistic UI updates during crawling.
+
+4.2 Route Protection (`frontend/src/components/ProtectedRoute.jsx`)
+- Wraps protected routes in React Router.
+- Checks Redux `auth.token`.
+- If token is missing, redirects user to `/login`.
+- If authenticated, renders nested `<Outlet />` or child components.
+
+4.3 User Interface Pages
+- Landing Page (`frontend/src/pages/Landing.jsx`):
+  Modern dark/light mode landing page featuring product hero section, feature cards, live navigation bar, and interactive auth triggers.
+- Login & Signup (`frontend/src/pages/Login.jsx`, `frontend/src/pages/Signup.jsx`):
+  Interactive forms handling email/password submission, Google OAuth login buttons, and multi-step OTP modal verification overlays with error handling.
+- Dashboard (`frontend/src/pages/Dashboard.jsx`):
+  Full multi-tenant management interface:
+  * Domain Addition Card: Input box to submit domain names with instant validation.
+  * Website Grid/List: Displays registered domains, verification status badges (`Verified` / `Pending`), registration dates, and action toolbars.
+  * Domain Ownership Verification Card: Displays DNS TXT record token instructions (`sitemind-verification=<token>`) and file upload path (`.well-known/sitemind-verification.txt`).
+  * Gatekept Action Buttons: "Start Crawling" and downstream features remain locked/disabled until `verification_status` is `verified`.
+
+
+5. STEP-BY-STEP WORKFLOW SUMMARY
+-------------------------------------------------------------------------------
+Step 1: User Registration / Authentication
+- User signs up at `/signup` or logs in at `/login` via standard email/password or Google OAuth.
+- Backend hashes password with bcrypt (if email signup), generates JWT token, and returns user payload.
+- Frontend stores JWT in `sessionStorage` and Redux state, triggering navigation to `/dashboard`.
+
+Step 2: Website Registration
+- Authenticated user enters domain (e.g. `mycompany.com`) into the Dashboard domain form.
+- Backend cleans domain string, generates a unique 32-char verification token, creates a `websites` record linked to `req.userId`, and logs the action in `verification_logs`.
+
+Step 3: Domain Verification Check
+- Verification engine checks DNS TXT record or HTTP verification file.
+- When verified, `verification_status` updates to `'verified'`.
+
+Step 4: Gatekept Downstream Triggering
+- User initiates web crawling or AI chatbot setup.
+- Backend verifies `req.userId` ownership AND checks that `verification_status === 'verified'`.
+- On validation success, downstream task execution begins.
+
+
+6. SECURITY & MULTI-TENANCY COMPLIANCE
+-------------------------------------------------------------------------------
+1. Multi-Tenant Isolation: Every website query, update, or delete includes `where: { user_id: req.userId }`.
+2. Password Security: Passwords are hashed with `bcryptjs` (salt rounds: 10). The `password_hash` column is explicitly stripped in `sanitizeUser` before any JSON response is sent.
+3. Bearer Token Auth: REST API routes enforce authentication via `authMiddleware` JWT verification.
+4. Input Validation: Zod schemas validate email formats, string lengths, and payload boundaries on all API endpoints.
+5. Domain Gatekeeping: Prevents unauthorized crawling or indexing of unverified third-party websites.
+===============================================================================
