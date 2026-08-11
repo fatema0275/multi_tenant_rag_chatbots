@@ -70,10 +70,14 @@ class HeadResult:
 # Public helpers                                                               #
 # --------------------------------------------------------------------------- #
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 def build_session() -> requests.Session:
     """Return a requests.Session with the crawler User-Agent pre-configured."""
     session = requests.Session()
     session.headers.update({"User-Agent": cfg.USER_AGENT})
+    session.verify = False
     return session
 
 

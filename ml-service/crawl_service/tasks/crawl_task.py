@@ -64,6 +64,7 @@ from crawl_service.db.crawl_jobs import (
     mark_job_completed,
     mark_job_failed,
     mark_job_running,
+    mark_job_cancelled,
 )
 from crawl_service.db.crawl_logs import log_page_outcome
 from crawl_service.db.pages import (
@@ -76,10 +77,20 @@ from crawl_service.db.pages import (
 logger = logging.getLogger(__name__)
 
 # Per-domain locks shared across threads within one worker process.
-# Prevents concurrent requests to the same domain regardless of how many
-# URLs from that domain appear in the crawl queue.
 _domain_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
 _domain_locks_guard = threading.Lock()
+
+_cancelled_jobs: set[int] = set()
+
+
+def cancel_job(job_id: int) -> None:
+    """Register a manual stop/cancel request for a job."""
+    _cancelled_jobs.add(job_id)
+    logger.info("Job %d registered for cancellation", job_id)
+
+
+def is_job_cancelled(job_id: int) -> bool:
+    return job_id in _cancelled_jobs
 
 
 def _get_domain_lock(domain: str) -> threading.Lock:
@@ -102,18 +113,9 @@ def _get_domain_lock(domain: str) -> threading.Lock:
 def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
     """
     Main Celery task — orchestrates the entire crawl for one website.
-
-    Parameters
-    ----------
-    job_id     : crawl_jobs.id
-    website_id : websites.id
-    domain     : e.g. 'example.com' (no scheme)
     """
     logger.info("=== Crawl job %d starting: website_id=%d domain=%s ===", job_id, website_id, domain)
 
-    # ------------------------------------------------------------------ #
-    # Step 1 — Determine crawl type and transition job to running         #
-    # ------------------------------------------------------------------ #
     existing_pages = get_existing_pages(website_id)
     crawl_type = "incremental" if existing_pages else "first"
 
@@ -121,22 +123,29 @@ def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
     logger.info("Job %d: crawl_type=%s, existing_pages=%d", job_id, crawl_type, len(existing_pages))
 
     try:
-        # ------------------------------------------------------------------ #
-        # Step 2 — Discover URLs                                              #
-        # ------------------------------------------------------------------ #
         scheme = "https"
         discovered_urls = discover_urls(domain, scheme, job_id=job_id)
-        logger.info("Job %d: discovered %d URLs total", job_id, len(discovered_urls))
+        max_pages = getattr(cfg, "MAX_PAGES", 200)
+        stall_timeout = getattr(cfg, "STALL_TIMEOUT", 300)
 
-        if not discovered_urls:
-            logger.warning("Job %d: no URLs discovered — marking completed", job_id)
+        target_urls = discovered_urls[:max_pages] if discovered_urls else []
+        logger.info("Job %d: discovered %d URLs total (processing top %d max_pages)", job_id, len(discovered_urls), len(target_urls))
+
+        if not target_urls:
+            logger.warning("Job %d: no URLs discovered. Marking completed", job_id)
             mark_job_completed(job_id)
+            log_page_outcome(job_id, "site_crawl", "completed", "reached page limit (0/0 pages)")
             return {"job_id": job_id, "status": "completed", "pages_found": 0}
 
-        # ------------------------------------------------------------------ #
-        # Step 3 — Process pages in a thread pool                            #
-        # ------------------------------------------------------------------ #
+        try:
+            increment_job_counter(job_id, "pages_found", len(target_urls))
+        except Exception as counter_err:
+            logger.warning("Failed to set pages_found counter for job %d: %s", job_id, counter_err)
+
         live_urls: set[str] = set()
+        last_progress_time = time.time()
+        was_cancelled = False
+        was_stalled = False
 
         with ThreadPoolExecutor(max_workers=cfg.MAX_WORKERS) as executor:
             futures = {
@@ -150,44 +159,64 @@ def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
                     crawl_type=crawl_type,
                     existing_pages=existing_pages,
                 ): url
-                for url in discovered_urls
+                for url in target_urls
             }
 
             for future in as_completed(futures):
+                if is_job_cancelled(job_id):
+                    logger.info("Job %d: manual stop detected. Terminating crawl execution", job_id)
+                    was_cancelled = True
+                    break
+
+                if time.time() - last_progress_time > stall_timeout:
+                    logger.warning("Job %d: stalled (no progress for %d seconds)", job_id, stall_timeout)
+                    was_stalled = True
+                    break
+
                 url = futures[future]
                 try:
                     outcome = future.result()
+                    last_progress_time = time.time()
                     if outcome in ("success", "skipped_unchanged", "duplicate"):
                         live_urls.add(url)
                 except Exception as exc:
                     logger.error("Unhandled exception processing %s: %s", url, exc, exc_info=True)
                     log_page_outcome(job_id, url, "failed", str(exc))
                     increment_job_counter(job_id, "pages_failed")
+                    last_progress_time = time.time()
 
-        # ------------------------------------------------------------------ #
-        # Step 4 — Mark removed pages                                         #
-        # ------------------------------------------------------------------ #
+        if was_cancelled:
+            mark_job_cancelled(job_id)
+            cancel_msg = f"Crawl stopped. {len(live_urls)}/est. {len(target_urls)} pages completed."
+            log_page_outcome(job_id, "site_crawl", "cancelled", cancel_msg)
+            return {"job_id": job_id, "status": "cancelled", "pages_crawled": len(live_urls)}
+
+        if was_stalled:
+            mark_job_failed(job_id, "stalled")
+            log_page_outcome(job_id, "site_crawl", "failed", "stalled: no progress for 5 minutes")
+            return {"job_id": job_id, "status": "failed", "reason": "stalled"}
+
         removed = mark_pages_removed(website_id, live_urls)
         for removed_url in removed:
             log_page_outcome(job_id, removed_url, "removed", "Not found in current crawl")
 
-        # ------------------------------------------------------------------ #
-        # Step 5 — Complete                                                   #
-        # ------------------------------------------------------------------ #
         mark_job_completed(job_id)
-        logger.info("=== Crawl job %d completed ===", job_id)
+        limit_msg = f"reached page limit ({len(live_urls)}/{max_pages} pages)" if len(target_urls) >= max_pages else f"reached page limit ({len(live_urls)}/{len(target_urls)} pages)"
+        log_page_outcome(job_id, "site_crawl", "completed", limit_msg)
+        logger.info("=== Crawl job %d completed: %s ===", job_id, limit_msg)
 
         return {
             "job_id": job_id,
             "status": "completed",
-            "pages_found": len(discovered_urls),
+            "pages_found": len(target_urls),
+            "pages_crawled": len(live_urls)
         }
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}"
         logger.error("Crawl job %d failed: %s", job_id, error_msg, exc_info=True)
         mark_job_failed(job_id, error_msg)
-        raise   # Re-raise so Celery records the task as FAILED
+        raise
 
 
 # --------------------------------------------------------------------------- #

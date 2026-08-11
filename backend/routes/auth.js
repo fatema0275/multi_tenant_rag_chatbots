@@ -162,6 +162,61 @@ router.post('/signup/resend-otp', async (req, res, next) => {
   }
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Please provide a valid email address')
+});
+
+const resetPasswordSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+  otp: z.string().min(6, 'Verification code must be 6 digits').max(6, 'Verification code must be 6 digits'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters long')
+});
+
+/**
+ * POST /api/auth/forgot-password
+ */
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const parseResult = forgotPasswordSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: parseResult.error.errors[0].message
+      });
+    }
+
+    const result = await authService.requestPasswordResetOtp(parseResult.data);
+    return res.status(200).json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ */
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const parseResult = resetPasswordSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: parseResult.error.errors[0].message
+      });
+    }
+
+    const result = await authService.resetPassword(parseResult.data);
+    return res.status(200).json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
 module.exports = router;
+
 
 

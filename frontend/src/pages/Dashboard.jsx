@@ -54,24 +54,28 @@ const validateDomain = (value) => {
 };
 
 const formatDate = (iso) => {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Date(iso).toLocaleDateString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
   });
 };
 
-const formatTimestamp = (iso) => {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-};
+const formatTimestamp = (iso) =>
+  iso
+    ? new Date(iso).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '-';
 
 const STATUS = {
-  verified: { label: 'Verified', color: 'text-accent', bg: 'bg-accent/10', dot: 'bg-accent', border: 'border-accent/20' },
-  pending:  { label: 'Pending',  color: 'text-amber-400', bg: 'bg-amber-400/10', dot: 'bg-amber-400', border: 'border-amber-400/20' },
-  failed:   { label: 'Failed',   color: 'text-red-400', bg: 'bg-red-400/10', dot: 'bg-red-400', border: 'border-red-400/20' },
-  crawling: { label: 'Crawling', color: 'text-blue-400', bg: 'bg-blue-400/10', dot: 'bg-blue-400', border: 'border-blue-400/20' },
+  verified:  { label: 'Verified', color: 'text-accent', bg: 'bg-accent/10', dot: 'bg-accent', border: 'border-accent/20' },
+  pending:   { label: 'Verified', color: 'text-accent', bg: 'bg-accent/10', dot: 'bg-accent', border: 'border-accent/20' },
+  failed:    { label: 'Failed',   color: 'text-red-400', bg: 'bg-red-400/10', dot: 'bg-red-400', border: 'border-red-400/20' },
+  crawling:  { label: 'Crawling', color: 'text-blue-400', bg: 'bg-blue-400/10', dot: 'bg-blue-400', border: 'border-blue-400/20' },
+  cancelled: { label: 'Cancelled', color: 'text-amber-400', bg: 'bg-amber-400/10', dot: 'bg-amber-400', border: 'border-amber-400/20' },
 };
 
 /* ── sub-components ──────────────────────────────────────────── */
@@ -470,14 +474,14 @@ const Dashboard = () => {
           <StatCard
             icon={Globe}
             label="Registered Sites"
-            value={loading && !websites.length ? '—' : websites.length}
+            value={loading && !websites.length ? '-' : websites.length}
             sub="Across all tenants"
             delay={0}
           />
           <StatCard
             icon={ShieldCheck}
             label="Verified"
-            value={loading && !websites.length ? '—' : verifiedCount}
+            value={loading && !websites.length ? '-' : verifiedCount}
             sub="Domain ownership confirmed"
             accent
             delay={0.08}
@@ -568,7 +572,7 @@ const Dashboard = () => {
                   }`}
                 >
                   {urlValidation.valid
-                    ? <><CheckCircle2 className="w-3.5 h-3.5" /> Valid domain — ready to register</>
+                    ? <><CheckCircle2 className="w-3.5 h-3.5" /> Valid domain. Ready to register</>
                     : <><X className="w-3.5 h-3.5" /> {urlValidation.message}</>
                   }
                 </motion.div>
@@ -577,7 +581,7 @@ const Dashboard = () => {
           </form>
         </motion.div>
 
-        {/* ── Registered websites grid ─────────────────────────── */}
+        {/* Registered websites grid */}
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-heading font-semibold text-base text-zinc-900 dark:text-white flex items-center gap-2">
@@ -681,7 +685,7 @@ const Dashboard = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-txt-primary-light dark:text-txt-primary-dark truncate">
                       {event.type === 'verified' ? 'Domain verified' : 'Website registered'}
-                      {' — '}
+                      {': '}
                       <span className="font-mono font-normal">{event.domain}</span>
                     </p>
                     <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark flex items-center gap-1 mt-0.5">

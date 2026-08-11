@@ -51,8 +51,11 @@ class Config:
     # BFS traversal depth (applies only when sitemap is absent/empty).
     MAX_DEPTH: int = int(os.getenv("CRAWL_MAX_DEPTH", "2"))
 
-    # Maximum URLs to process in a single crawl job.
-    MAX_PAGES: int = int(os.getenv("CRAWL_MAX_PAGES", "500"))
+    # Maximum URLs to process in a single crawl job (default 200, configurable).
+    MAX_PAGES: int = int(os.getenv("CRAWL_MAX_PAGES", "200"))
+
+    # Stall timeout: auto-terminate if no progress for 5 minutes (300 seconds).
+    STALL_TIMEOUT: int = int(os.getenv("CRAWL_STALL_TIMEOUT", "300"))
 
     # Per-page HTTP request timeout in seconds.
     PAGE_TIMEOUT: int = int(os.getenv("CRAWL_PAGE_TIMEOUT", "15"))

@@ -153,6 +153,27 @@ router.post('/:id/crawl', async (req, res, next) => {
 });
 
 /**
+ * POST /api/websites/:id/stop-crawl
+ * Manually stop an active crawl job for a website.
+ */
+router.post('/:id/stop-crawl', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) {
+      return res.status(400).json({ error: 'Invalid website ID' });
+    }
+
+    const result = await crawlService.stopCrawl(req.userId, websiteId);
+    return res.status(200).json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+/**
  * GET /api/websites/:id/crawl-jobs
  * Returns the most recent crawl jobs for a verified website (max 10).
  * Used by the dashboard's Crawl Status panel to display logs.

@@ -14,9 +14,17 @@ const readStorage = () => {
 
   const token = sessionStorage.getItem(KEYS.TOKEN);
   const userRaw = sessionStorage.getItem(KEYS.USER);
+  let user = null;
+  if (userRaw) {
+    try {
+      user = JSON.parse(userRaw);
+    } catch (e) {
+      sessionStorage.removeItem(KEYS.USER);
+    }
+  }
   return {
     token: token || null,
-    user: userRaw ? JSON.parse(userRaw) : null,
+    user,
   };
 };
 
@@ -162,7 +170,25 @@ export const forgotPasswordThunk = createAsyncThunk(
         body: JSON.stringify({ email }),
       });
       const data = await response.json();
-      if (!response.ok) return rejectWithValue(data.error || 'Failed to send reset link');
+      if (!response.ok) return rejectWithValue(data.error || 'Failed to send reset code');
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.message || 'Network error occurred');
+    }
+  }
+);
+
+export const resetPasswordThunk = createAsyncThunk(
+  'auth/resetPassword',
+  async ({ email, otp, newPassword }, { rejectWithValue }) => {
+    try {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) return rejectWithValue(data.error || 'Failed to reset password');
       return data;
     } catch (err) {
       return rejectWithValue(err.message || 'Network error occurred');
@@ -178,6 +204,10 @@ const authSlice = createSlice({
     otpStep: false,
     pendingEmail: '',
     devOtp: null,
+    forgotOtpStep: false,
+    forgotEmail: '',
+    forgotDevOtp: null,
+    forgotSuccess: false,
   },
   reducers: {
     logout: (state) => {
@@ -189,17 +219,29 @@ const authSlice = createSlice({
       state.otpStep = false;
       state.pendingEmail = '';
       state.devOtp = null;
+      state.forgotOtpStep = false;
+      state.forgotEmail = '';
+      state.forgotDevOtp = null;
+      state.forgotSuccess = false;
     },
     clearAuthError: (state) => {
       state.error = null;
     },
     clearForgotPasswordSent: (state) => {
       state.forgotPasswordSent = false;
+      state.forgotOtpStep = false;
+      state.forgotEmail = '';
+      state.forgotDevOtp = null;
+      state.forgotSuccess = false;
     },
     cancelOtpStep: (state) => {
       state.otpStep = false;
       state.pendingEmail = '';
       state.devOtp = null;
+      state.forgotOtpStep = false;
+      state.forgotEmail = '';
+      state.forgotDevOtp = null;
+      state.forgotSuccess = false;
       state.error = null;
     },
   },
@@ -264,13 +306,28 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      // Forgot password
+      // Forgot password request
       .addCase(forgotPasswordThunk.pending, (state) => { state.loading = true; state.error = null; state.forgotPasswordSent = false; })
-      .addCase(forgotPasswordThunk.fulfilled, (state) => {
+      .addCase(forgotPasswordThunk.fulfilled, (state, action) => {
         state.loading = false;
         state.forgotPasswordSent = true;
+        state.forgotOtpStep = true;
+        state.forgotEmail = action.payload.email;
+        state.forgotDevOtp = action.payload.devOtp || null;
       })
       .addCase(forgotPasswordThunk.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Reset password verify
+      .addCase(resetPasswordThunk.pending, (state) => { state.loading = true; state.error = null; })
+      .addCase(resetPasswordThunk.fulfilled, (state) => {
+        state.loading = false;
+        state.forgotOtpStep = false;
+        state.forgotSuccess = true;
+        state.forgotDevOtp = null;
+      })
+      .addCase(resetPasswordThunk.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });
@@ -279,5 +336,6 @@ const authSlice = createSlice({
 
 export const { logout, clearAuthError, clearForgotPasswordSent, cancelOtpStep } = authSlice.actions;
 export default authSlice.reducer;
+
 
 

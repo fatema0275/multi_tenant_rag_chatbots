@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
+import { stopCrawl } from '../../store/websiteSlice';
+import toast from 'react-hot-toast';
 import {
   Activity,
   RefreshCw,
@@ -13,29 +15,15 @@ import {
   SkipForward,
   Search,
   AlertTriangle,
+  Square,
 } from 'lucide-react';
-
-/**
- * CrawlStatusPanel
- *
- * Lets users pick a registered website and view the last 10 crawl jobs
- * for that site — status, page counts, timing.
- *
- * Data comes from GET /api/websites/:id/crawl-jobs (Node.js backend,
- * which reads the crawl_jobs table directly from Supabase).
- *
- * This requires the migrations 014-015 to have been applied first.
- * If the crawl_jobs table columns don't exist yet, the endpoint returns
- * an empty array and the panel shows a "no jobs yet" state gracefully.
- */
-
-// ── helpers ──────────────────────────────────────────────────────────────── //
 
 const STATUS_CFG = {
   queued:    { label: 'Queued',    color: 'text-amber-400',  bg: 'bg-amber-400/10',  border: 'border-amber-400/20',  dot: 'bg-amber-400',  Icon: Clock },
   running:   { label: 'Running',   color: 'text-blue-400',   bg: 'bg-blue-400/10',   border: 'border-blue-400/20',   dot: 'bg-blue-400',   Icon: Loader2 },
   completed: { label: 'Completed', color: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/20', dot: 'bg-emerald-400', Icon: CheckCircle2 },
   failed:    { label: 'Failed',    color: 'text-red-400',    bg: 'bg-red-400/10',    border: 'border-red-400/20',    dot: 'bg-red-400',    Icon: XCircle },
+  cancelled: { label: 'Cancelled', color: 'text-amber-400',  bg: 'bg-amber-400/10',  border: 'border-amber-400/20',  dot: 'bg-amber-400',  Icon: XCircle },
 };
 
 const fmt = (iso) =>
@@ -44,10 +32,10 @@ const fmt = (iso) =>
         month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit',
       })
-    : '—';
+    : '-';
 
 const duration = (start, end) => {
-  if (!start) return '—';
+  if (!start) return '-';
   const ms = new Date(end || Date.now()) - new Date(start);
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   return `${Math.round(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
@@ -68,20 +56,20 @@ const StatusBadge = ({ status }) => {
 // Counter pill
 const CountPill = ({ value, label, color = 'text-txt-secondary-light dark:text-txt-secondary-dark' }) => (
   <div className="flex flex-col items-center min-w-[48px]">
-    <span className={`text-base font-bold font-mono tabular-nums ${color}`}>{value ?? '—'}</span>
+    <span className={`text-base font-bold font-mono tabular-nums ${color}`}>{value ?? '-'}</span>
     <span className="text-[10px] text-txt-secondary-light dark:text-txt-secondary-dark uppercase tracking-wider mt-0.5">{label}</span>
   </div>
 );
 
-// ── main component ────────────────────────────────────────────────────────── //
-
 const CrawlStatusPanel = () => {
+  const dispatch = useDispatch();
   const { websites } = useSelector((s) => s.websites);
   const token = useSelector((s) => s.auth.token);
 
   const [selectedId, setSelectedId] = useState('');
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState(null);
   const [lastFetched, setLastFetched] = useState(null);
 
@@ -102,7 +90,7 @@ const CrawlStatusPanel = () => {
         setLastFetched(new Date());
       }
     } catch {
-      setError('Network error — check the backend is running');
+      setError('Network error. Check backend process');
       setJobs([]);
     } finally {
       setLoading(false);
@@ -122,14 +110,30 @@ const CrawlStatusPanel = () => {
     if (selectedId) fetchJobs(selectedId);
   };
 
-  // Only show verified sites (or sites with no explicit status)
+  const handleStopCrawl = async () => {
+    if (!selectedId || stopping) return;
+    setStopping(true);
+    const result = await dispatch(stopCrawl(Number(selectedId)));
+    setStopping(false);
+
+    if (stopCrawl.fulfilled.match(result)) {
+      toast.success(
+        result.payload.message || 'Crawl stopped. Chatbot is answering from partial content.'
+      );
+      fetchJobs(selectedId);
+    } else {
+      toast.error(result.payload || 'Failed to stop crawl.');
+    }
+  };
+
   const crawlableSites = websites.filter(
-    (w) => !w.verification_status || w.verification_status === 'verified'
+    (w) => !w.verification_status || w.verification_status === 'verified' || w.verification_status === 'pending'
   );
 
   if (!websites.length) return null;
 
   const selectedSite = websites.find((w) => String(w.id) === selectedId);
+  const hasRunningJob = jobs.some((j) => j.status === 'running');
 
   return (
     <motion.div
@@ -138,7 +142,7 @@ const CrawlStatusPanel = () => {
       transition={{ duration: 0.4, delay: 0.1 }}
       className="rounded-[18px] bg-white dark:bg-surface-dark border border-zinc-100 dark:border-border-dark overflow-hidden"
     >
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-zinc-100 dark:border-border-dark">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent" />
@@ -153,6 +157,18 @@ const CrawlStatusPanel = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Stop Crawl button for running jobs */}
+          {hasRunningJob && (
+            <button
+              onClick={handleStopCrawl}
+              disabled={stopping}
+              className="h-8 px-3 rounded-[10px] bg-red-500 hover:bg-red-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+            >
+              {stopping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5 fill-current" />}
+              Stop Crawl
+            </button>
+          )}
+
           {/* Site selector */}
           <div className="relative">
             <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none z-10" />
@@ -162,7 +178,7 @@ const CrawlStatusPanel = () => {
               className="h-8 pl-8 pr-7 rounded-[10px] border border-zinc-200 dark:border-border-dark bg-zinc-50 dark:bg-[#0E0E12] text-sm text-txt-primary-light dark:text-txt-primary-dark appearance-none focus:outline-none focus:border-accent transition-all cursor-pointer"
               aria-label="Select website to view crawl logs"
             >
-              <option value="">Choose site…</option>
+              <option value="">Choose site...</option>
               {crawlableSites.map((site) => (
                 <option key={site.id} value={String(site.id)}>
                   {site.domain}
@@ -184,7 +200,7 @@ const CrawlStatusPanel = () => {
         </div>
       </div>
 
-      {/* ── Body ───────────────────────────────────────────────────────── */}
+      {/* Body */}
       <div className="px-6 py-4">
         <AnimatePresence mode="wait">
           {/* No site selected */}
@@ -213,7 +229,7 @@ const CrawlStatusPanel = () => {
               className="flex items-center justify-center py-10 gap-2 text-txt-secondary-light dark:text-txt-secondary-dark"
             >
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">Loading jobs…</span>
+              <span className="text-sm">Loading jobs...</span>
             </motion.div>
           )}
 
@@ -308,7 +324,7 @@ const CrawlStatusPanel = () => {
         </AnimatePresence>
       </div>
 
-      {/* ── Footer note ────────────────────────────────────────────────── */}
+      {/* Footer note */}
       {jobs.length > 0 && (
         <div className="px-6 pb-4 pt-1 border-t border-zinc-100 dark:border-border-dark">
           <p className="text-[11px] text-txt-secondary-light dark:text-txt-secondary-dark">

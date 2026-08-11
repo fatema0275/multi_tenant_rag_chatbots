@@ -148,3 +148,19 @@ def mark_job_failed(job_id: int, error_message: str) -> None:
                 """,
                 (datetime.now(tz=timezone.utc), error_message[:2000], job_id),
             )
+
+
+def mark_job_cancelled(job_id: int) -> None:
+    """Transition status running/queued → cancelled."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE crawl_jobs
+                SET    status       = 'cancelled',
+                       completed_at = %s
+                WHERE  id = %s
+                """,
+                (datetime.now(tz=timezone.utc), job_id),
+            )
+

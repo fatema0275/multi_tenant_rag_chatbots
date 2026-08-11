@@ -38,13 +38,10 @@ const triggerCrawl = async (userId, websiteId) => {
   }
 
   // 2. Gate crawl on verification_status
-  // BUG FIX: Original condition `status && status !== 'verified'` was falsy
-  // when verification_status was null/undefined, silently allowing unverified
-  // sites through.  Correct check: the field must be exactly 'verified'.
-  if (website.verification_status !== 'verified') {
+  if (website.verification_status !== 'verified' && website.verification_status !== 'pending') {
     const err = new Error(
-      `Cannot crawl an unverified website (current status: ${website.verification_status ?? 'unknown'}). ` +
-      'Complete domain verification first.'
+      `Cannot crawl website with status: ${website.verification_status ?? 'unknown'}. ` +
+      'Complete domain registration first.'
     );
     err.statusCode = 422;
     throw err;
@@ -85,7 +82,7 @@ const triggerCrawl = async (userId, websiteId) => {
       // AbortError = timeout; TypeError = bridge unreachable (ECONNREFUSED etc.)
       const err = new Error(
         bridgeErr.name === 'AbortError'
-          ? 'Crawl bridge timed out — it may be starting up, try again shortly.'
+          ? 'Crawl bridge timed out. It may be starting up, try again shortly.'
           : `Python bridge unreachable: ${bridgeErr.message}`
       );
       err.statusCode = 503;
@@ -98,8 +95,77 @@ const triggerCrawl = async (userId, websiteId) => {
   return {
     jobId: null,
     status: 'crawling',
-    message: `[dev] Crawl job simulated for ${website.domain} — configure CRAWL_BRIDGE_URL to use the real pipeline.`,
+    message: `[dev] Crawl job simulated for ${website.domain}. Configure CRAWL_BRIDGE_URL to use the real pipeline.`,
   };
 };
 
-module.exports = { triggerCrawl };
+/**
+ * stopCrawl
+ * Manual stop / cancellation of a running crawl job for a website.
+ */
+const stopCrawl = async (userId, websiteId) => {
+  const website = await Website.findOne({
+    where: { id: websiteId, user_id: userId },
+  });
+
+  if (!website) {
+    const err = new Error('Website not found or unauthorized');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const { sequelize } = require('../models');
+
+  const [activeJobs] = await sequelize.query(
+    `SELECT id FROM crawl_jobs WHERE website_id = :websiteId AND status = 'running' ORDER BY id DESC LIMIT 1`,
+    { replacements: { websiteId }, type: sequelize.QueryTypes.SELECT }
+  );
+
+  const activeJob = Array.isArray(activeJobs) ? activeJobs[0] : activeJobs;
+  if (!activeJob) {
+    const err = new Error('No running crawl job found');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const jobId = activeJob.id;
+
+  if (BRIDGE_URL) {
+    try {
+      await fetch(`${BRIDGE_URL}/crawl/${jobId}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ website_id: websiteId, user_id: userId }),
+        signal: AbortSignal.timeout(5000)
+      });
+    } catch (e) {
+      console.warn('[crawlService] Python bridge stop request failed or timed out:', e.message);
+    }
+  }
+
+  const [countRows] = await sequelize.query(
+    `SELECT COUNT(*) AS total FROM pages WHERE website_id = :websiteId`,
+    { replacements: { websiteId }, type: sequelize.QueryTypes.SELECT }
+  );
+  const pageCount = (Array.isArray(countRows) ? countRows[0] : countRows)?.total || 0;
+
+  await sequelize.query(
+    `UPDATE crawl_jobs SET status = 'cancelled', completed_at = NOW() WHERE id = :jobId`,
+    { replacements: { jobId } }
+  );
+
+  try {
+    await sequelize.query(
+      `INSERT INTO crawl_logs (crawl_job_id, url, status, message) VALUES (:jobId, 'site_crawl', 'cancelled', :msg)`,
+      { replacements: { jobId, msg: `Crawl stopped. ${pageCount} pages completed.` } }
+    );
+  } catch (_) {}
+
+  return {
+    jobId,
+    status: 'cancelled',
+    message: `Crawl stopped. ${pageCount} pages indexed. Chatbot is answering from partial content.`
+  };
+};
+
+module.exports = { triggerCrawl, stopCrawl };

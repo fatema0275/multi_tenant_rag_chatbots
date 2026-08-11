@@ -252,11 +252,11 @@ def _normalise(url: str) -> Optional[str]:
 
 
 def _same_domain(url: str, domain: str) -> bool:
-    """True if url's netloc matches the crawl domain (ignoring www prefix)."""
-    netloc = urlparse(url).netloc.lower()
+    """True if url's netloc matches the crawl domain (ignoring www prefix and ports)."""
+    netloc = urlparse(url).netloc.lower().split(":")[0]
     clean_netloc = netloc.replace("www.", "")
-    clean_domain = domain.replace("www.", "")
-    return clean_netloc == clean_domain
+    clean_domain = domain.lower().replace("www.", "").split(":")[0]
+    return clean_netloc == clean_domain or clean_netloc.endswith("." + clean_domain)
 
 
 def _filter_and_dedup(urls: list[str], domain: str, scheme: str) -> list[str]:

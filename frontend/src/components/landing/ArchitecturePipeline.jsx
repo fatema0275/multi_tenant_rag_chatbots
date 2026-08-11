@@ -79,7 +79,7 @@ const ArchitecturePipeline = () => (
     {/* ── Phase label ── */}
     <div className="flex items-center gap-2">
       <span className="text-[10px] font-bold uppercase tracking-widest text-txt-secondary-light dark:text-txt-secondary-dark px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-border-dark">
-        Phase 1 — Ingestion
+        Phase 1: Ingestion
       </span>
       <div className="flex-1 h-px bg-zinc-100 dark:bg-border-dark" />
     </div>
@@ -104,7 +104,7 @@ const ArchitecturePipeline = () => (
     {/* ── Phase label ── */}
     <div className="flex items-center gap-2 pt-2">
       <span className="text-[10px] font-bold uppercase tracking-widest text-txt-secondary-light dark:text-txt-secondary-dark px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-border-dark">
-        Phase 2 — Query
+        Phase 2: Query
       </span>
       <div className="flex-1 h-px bg-zinc-100 dark:bg-border-dark" />
     </div>
@@ -134,7 +134,7 @@ const ArchitecturePipeline = () => (
         <div>
           <div className="text-[12px] font-semibold text-accent">Verified Answer</div>
           <div className="text-[11px] text-txt-secondary-light dark:text-txt-secondary-dark mt-0.5">
-            Claim is supported by source chunks — answer delivered to visitor
+            Claim is supported by source chunks, answer delivered to visitor
           </div>
         </div>
       </motion.div>
@@ -148,7 +148,7 @@ const ArchitecturePipeline = () => (
         <div>
           <div className="text-[12px] font-semibold text-amber-400">Fallback Response</div>
           <div className="text-[11px] text-txt-secondary-light dark:text-txt-secondary-dark mt-0.5">
-            Claim unsupported — transparent fallback instead of hallucination
+            Claim unsupported - transparent fallback instead of hallucination
           </div>
         </div>
       </motion.div>

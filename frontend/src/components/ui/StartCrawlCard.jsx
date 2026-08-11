@@ -46,7 +46,8 @@ const StartCrawlCard = () => {
   const isVerified =
     !selectedSite ||
     !selectedSite.verification_status ||
-    selectedSite.verification_status === 'verified';
+    selectedSite.verification_status === 'verified' ||
+    selectedSite.verification_status === 'pending';
 
   const canSubmit = selectedId !== '' && isVerified && !crawling;
 
@@ -65,7 +66,7 @@ const StartCrawlCard = () => {
       // Reset dropdown so the user doesn't accidentally double-submit
       setSelectedId('');
     } else {
-      toast.error(result.payload || 'Failed to start crawl — check the activity log.');
+      toast.error(result.payload || 'Failed to start crawl. Check the activity log.');
     }
   };
 
@@ -81,12 +82,12 @@ const StartCrawlCard = () => {
         Start a Crawl
       </h2>
       <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark mb-5">
-        Select a verified website and queue an indexing job. Unverified sites are disabled.
+        Select a registered website and queue an indexing job. Unverified sites are disabled.
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-2.5" noValidate>
         <div className="flex gap-3">
-          {/* ── Custom-styled native select ─────────────────────── */}
+          {/* Custom-styled native select */}
           <div className="relative flex-1">
             {/* Prefix icon */}
             <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500 pointer-events-none z-10" />
@@ -112,13 +113,14 @@ const StartCrawlCard = () => {
               aria-label="Select website to crawl"
             >
               <option value="" className="text-zinc-400 dark:text-zinc-500">
-                Choose a website…
+                Choose a website...
               </option>
 
               {websites.map((site) => {
                 const verified =
                   !site.verification_status ||
-                  site.verification_status === 'verified';
+                  site.verification_status === 'verified' ||
+                  site.verification_status === 'pending';
                 return (
                   <option
                     key={site.id}
@@ -130,7 +132,7 @@ const StartCrawlCard = () => {
                         : 'text-zinc-400 dark:text-zinc-500'
                     }`}
                   >
-                    {site.name ? `${site.name} — ` : ''}{site.domain}
+                    {site.name ? `${site.name} ` : ''}{site.domain}
                     {!verified ? '  [unverified]' : ''}
                   </option>
                 );
@@ -141,7 +143,7 @@ const StartCrawlCard = () => {
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
           </div>
 
-          {/* ── Start Crawl button ──────────────────────────────── */}
+          {/* Start Crawl button */}
           <button
             type="submit"
             id="start-crawl-submit"
@@ -151,7 +153,7 @@ const StartCrawlCard = () => {
             {crawling ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Starting…
+                Starting...
               </>
             ) : (
               <>
@@ -162,7 +164,7 @@ const StartCrawlCard = () => {
           </button>
         </div>
 
-        {/* ── Unverified warning hint ──────────────────────────── */}
+        {/* Unverified warning hint */}
         <AnimatePresence>
           {selectedId && !isVerified && (
             <motion.div
@@ -172,7 +174,7 @@ const StartCrawlCard = () => {
               className="flex items-center gap-1.5 text-xs font-medium pl-1 text-amber-500 dark:text-amber-400"
             >
               <ShieldAlert className="w-3.5 h-3.5" />
-              This website hasn't been verified yet — crawling is disabled until ownership is confirmed.
+              This website hasn't been verified yet. Crawling is disabled until domain registration is complete.
             </motion.div>
           )}
         </AnimatePresence>

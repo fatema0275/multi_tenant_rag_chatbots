@@ -128,3 +128,18 @@ def get_job_status(job_id: int):
     if not job:
         return jsonify({"error": "Crawl job not found"}), 404
     return jsonify(job), 200
+
+
+# --------------------------------------------------------------------------- #
+# POST /crawl/<job_id>/stop                                                     #
+# --------------------------------------------------------------------------- #
+@crawl_bp.post("/crawl/<int:job_id>/stop")
+def stop_crawl_job(job_id: int):
+    """Manually stop/cancel an active crawl job."""
+    from crawl_service.tasks.crawl_task import cancel_job
+    cancel_job(job_id)
+    return jsonify({
+        "job_id": job_id,
+        "status": "cancelled",
+        "message": f"Stop request recorded for crawl job {job_id}"
+    }), 200

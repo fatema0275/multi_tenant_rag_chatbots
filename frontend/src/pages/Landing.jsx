@@ -5,7 +5,7 @@ import {
   ArrowRight, Play, ShieldCheck, Globe, Database, Bot, Brain,
   RefreshCw, MousePointerClick, BarChart3, ThumbsUp, Lock,
   FileSearch, Cpu, Layers, Zap, ArrowUpRight, Github, BookOpen,
-  FileText, Mail, CheckCircle2, MessageSquare, FlaskConical,
+  FileText, Mail, CheckCircle2, MessageSquare, FlaskConical, Code2, CheckSquare,
 } from 'lucide-react';
 
 import Navbar from '../components/landing/Navbar';
@@ -53,14 +53,16 @@ const HOW_IT_WORKS = [
 
 const FEATURES = [
   {
-    icon: FlaskConical,
-    title: 'Entailment Verification',
-    tagline: 'Every answer checked against source — no hallucinations.',
+    icon: CheckSquare,
+    title: 'NLI Entailment Check',
+    tagline: 'Every answer checked against source with zero hallucinations.',
+    desc: 'Each factual claim is verified against retrieved chunks using a cross-encoder model before reaching the user.',
   },
   {
     icon: Lock,
-    title: 'Tenant Isolation',
-    tagline: 'RLS-enforced per-tenant storage — zero cross-tenant bleed.',
+    title: 'Tenant Data Isolation',
+    tagline: 'RLS-enforced per-tenant storage with zero cross-tenant bleed.',
+    desc: 'PostgreSQL Row-Level Security policies guarantee that embeddings and chunks remain completely isolated per customer.',
   },
   {
     icon: MousePointerClick,
@@ -68,9 +70,10 @@ const FEATURES = [
     tagline: 'Highlights the exact paragraph the answer came from.',
   },
   {
-    icon: Bot,
-    title: 'Embeddable Widget',
-    tagline: 'One script tag — branded and live in minutes.',
+    icon: Code2,
+    title: 'Instant Widget Embed',
+    tagline: 'One script tag. Branded and live in minutes.',
+    desc: 'Drop a single `<script>` tag into your site HTML to activate a fully styled chatbot tuned to your knowledge base.',
   },
   {
     icon: RefreshCw,
@@ -94,21 +97,21 @@ const STATS = [
 
 const TESTIMONIALS = [
   {
-    quote: 'We integrated SiteMind on our docs portal in under an hour. The entailment filtering is the first chatbot feature that made our legal team comfortable — it simply won\'t make things up.',
+    quote: 'We integrated SiteMind on our docs portal in under an hour. The entailment filtering is the first chatbot feature that made our legal team comfortable. It simply won\'t make things up.',
     name: 'Priya Nambiar',
     role: 'Head of Product',
     company: 'Nexlyr',
     rating: 5,
   },
   {
-    quote: 'Every other RAG chatbot we tried would confidently hallucinate API details. SiteMind\'s fallback mechanism caught the gaps and told users to check the docs — exactly right.',
+    quote: 'Every other RAG chatbot we tried would confidently hallucinate API details. SiteMind\'s fallback mechanism caught the gaps and told users to check the docs, exactly right.',
     name: 'Marcus Osei',
     role: 'Staff Engineer',
     company: 'Stackform',
     rating: 5,
   },
   {
-    quote: 'The visual pointing feature is a game-changer. Users don\'t just get an answer — they see exactly where it came from on the page. Trust went up immediately.',
+    quote: 'The visual pointing feature is a game-changer. Users don\'t just get an answer, they see exactly where it came from on the page. Trust went up immediately.',
     name: 'Lena Hartmann',
     role: 'CX Platform Lead',
     company: 'Kairo Labs',
@@ -119,15 +122,15 @@ const TESTIMONIALS = [
 const FAQS = [
   {
     question: 'How does SiteMind verify I own a domain before crawling?',
-    answer: 'You can verify ownership by adding a specific DNS TXT record to your domain\'s DNS configuration, or by uploading a small verification file to a known path on your web server. SiteMind checks for one of these before initiating any crawl — it will never crawl a site you haven\'t verified.',
+    answer: 'You can verify ownership by adding a specific DNS TXT record to your domain\'s DNS configuration, or by uploading a small verification file to a known path on your web server. SiteMind checks for one of these before initiating any crawl. It will never crawl a site you haven\'t verified.',
   },
   {
     question: 'What exactly is "entailment verification"?',
-    answer: 'After the LLM generates an answer, SiteMind runs a Natural Language Inference (NLI) model that checks whether each factual claim in the answer is actually entailed by the retrieved source chunks. If the claim is not supported — or the confidence is below the threshold — the system returns a transparent fallback message rather than serving the unverified answer.',
+    answer: 'After the LLM generates an answer, SiteMind runs a Natural Language Inference (NLI) model that checks whether each factual claim in the answer is actually entailed by the retrieved source chunks. If the claim is not supported, or the confidence is below the threshold, the system returns a transparent fallback message rather than serving the unverified answer.',
   },
   {
     question: 'Is content from one website ever used to answer queries for another?',
-    answer: 'No. Each website\'s embeddings are stored with Row-Level Security (RLS) scoped to that tenant\'s ID at the PostgreSQL level. The retrieval layer only queries rows that belong to the requesting tenant — cross-tenant access is impossible by construction.',
+    answer: 'No. Each website\'s embeddings are stored with Row-Level Security (RLS) scoped to that tenant\'s ID at the PostgreSQL level. The retrieval layer only queries rows that belong to the requesting tenant. Cross-tenant access is impossible by construction.',
   },
   {
     question: 'How does the crawler handle JavaScript-rendered content?',
@@ -139,11 +142,11 @@ const FAQS = [
   },
   {
     question: 'What happens when my site updates?',
-    answer: 'SiteMind\'s sync engine periodically re-crawls your site, hashes page content, and reprocesses only what has changed. Each sync run is logged with pages checked, updated, added, and removed counts — visible in your dashboard\'s sync history.',
+    answer: 'SiteMind\'s sync engine periodically re-crawls your site, hashes page content, and reprocesses only what has changed. Each sync run is logged with pages checked, updated, added, and removed counts, visible in your dashboard\'s sync history.',
   },
   {
     question: 'Can I embed the chatbot widget on any site?',
-    answer: 'Yes — you receive a small script tag that loads the widget. It inherits your site\'s theme color and logo from your chatbot configuration, and queries are always scoped to your tenant\'s knowledge base.',
+    answer: 'Yes, you receive a small script tag that loads the widget. It inherits your site\'s theme color and logo from your chatbot configuration, and queries are always scoped to your tenant\'s knowledge base.',
   },
 ];
 
@@ -205,7 +208,7 @@ const Landing = () => (
             >
               Your website,{' '}
               <span className="text-gradient">answered accurately</span>
-              {' '}— every time
+              {' '} every time
             </motion.h1>
 
             <motion.p
@@ -215,7 +218,7 @@ const Landing = () => (
               className="mt-4 text-[15px] text-txt-secondary-light dark:text-txt-secondary-dark leading-relaxed max-w-lg mx-auto lg:mx-0"
             >
               Register your site, verify domain ownership, and get back a chatbot that answers
-              <em> strictly</em> from your content — with every claim entailment-checked before delivery.
+              <em> strictly</em> from your content with every claim entailment-checked before delivery.
             </motion.p>
 
             <motion.div
@@ -250,10 +253,9 @@ const Landing = () => (
               className="mt-5 flex flex-wrap gap-x-5 gap-y-2 justify-center lg:justify-start"
             >
               {[
-                'DNS-verified ownership',
+                'NLI entailment check',
                 'robots.txt compliant',
                 'RLS tenant isolation',
-                'NLI entailment check',
               ].map((tag) => (
                 <span key={tag} className="flex items-center gap-1.5 text-[13px] text-txt-secondary-light dark:text-txt-secondary-dark">
                   <ShieldCheck className="w-3.5 h-3.5 text-accent" />
@@ -329,9 +331,9 @@ const Landing = () => (
           <div className="text-[10px] font-bold uppercase tracking-widest text-txt-secondary-light dark:text-txt-secondary-dark mb-0.5">Steps</div>
           {[
             { n: 1, title: 'Register your site',  sub: 'Add a domain to your SiteMind account.' },
-            { n: 2, title: 'Verify ownership',     sub: 'DNS TXT record or file upload — no crawl before this.' },
+            { n: 2, title: 'Verify ownership',     sub: 'DNS TXT record or file upload - no crawl before this.' },
             { n: 3, title: 'Crawl, chunk & embed', sub: 'Automatic ingestion into your isolated knowledge base.' },
-            { n: 4, title: 'Embed the widget',     sub: 'One script tag — live, branded, answering instantly.' },
+            { n: 4, title: 'Embed the widget',     sub: 'One script tag - live, branded, answering instantly.' },
           ].map(({ n, title, sub }, i) => (
             <motion.div
               key={n}
@@ -387,7 +389,7 @@ const Landing = () => (
               </div>
               <div className="flex-1 rounded-[12px] rounded-tl-sm bg-zinc-50 dark:bg-[#111115] border border-zinc-100 dark:border-border-dark px-3 py-2">
                 <p className="text-[12px] text-txt-primary-light dark:text-txt-primary-dark leading-snug">
-                  Full refund within <strong>30 days</strong> of purchase — no questions asked.
+                  Full refund within <strong>30 days</strong> of purchase - no questions asked.
                 </p>
                 <div className="mt-1.5 flex items-center gap-1 text-[10px] text-accent">
                   <CheckCircle2 className="w-2.5 h-2.5" />
@@ -410,7 +412,7 @@ const Landing = () => (
               </div>
               <div className="flex-1 rounded-[12px] rounded-tl-sm bg-zinc-50 dark:bg-[#111115] border border-zinc-100 dark:border-border-dark px-3 py-2">
                 <p className="text-[12px] text-txt-primary-light dark:text-txt-primary-dark leading-snug">
-                  Yes — the 30-day policy covers all products, including digital downloads.
+                  Yes the 30-day policy covers all products, including digital downloads.
                 </p>
                 <div className="mt-1.5 flex items-center gap-1 text-[10px] text-accent">
                   <CheckCircle2 className="w-2.5 h-2.5" />
@@ -440,7 +442,7 @@ const Landing = () => (
         <SectionTitle>Simple, transparent pricing</SectionTitle>
         <SectionSubtitle>
           All plans include entailment verification and tenant-isolated storage.
-          Scale as your site content grows — no hidden per-query fees.
+          Scale as your site content grows no hidden per-query fees.
         </SectionSubtitle>
       </div>
 
@@ -601,7 +603,7 @@ const Landing = () => (
               id="cta-get-started"
               className="btn-accent px-8 py-3.5 text-[15px] shadow-sm hover:shadow-accent/30"
             >
-              Generate Chatbot — It's Free
+              Generate Chatbot - It's Free
               <ArrowRight className="w-4 h-4" />
             </Link>
             <a

@@ -110,8 +110,28 @@ export const triggerCrawl = createAsyncThunk(
       }
       return { websiteId, ...data };
     } catch (err) {
-      // Surface network-level errors (e.g. Python bridge unreachable)
-      return rejectWithValue(err.message || 'Network error — crawler may be unreachable');
+      // Surface network-level errors
+      return rejectWithValue(err.message || 'Network error. Crawler may be unreachable');
+    }
+  }
+);
+
+export const stopCrawl = createAsyncThunk(
+  'websites/stopCrawl',
+  async (websiteId, { getState, rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/websites/${websiteId}/stop-crawl`, {
+        method: 'POST',
+        headers: getAuthHeaders(getState),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return rejectWithValue(data.error || 'Failed to stop crawl');
+      }
+      return { websiteId, ...data };
+    } catch (err) {
+      return rejectWithValue(err.message || 'Network error');
     }
   }
 );
@@ -133,8 +153,12 @@ const websiteSlice = createSlice({
      */
     patchCrawlStatus: (state, action) => {
       const { websiteId, crawl_status } = action.payload;
-      const site = state.websites.find((w) => w.id === websiteId);
-      if (site) site.crawl_status = crawl_status;
+      const index = state.websites.findIndex((w) => w.id === websiteId);
+      if (index !== -1) {
+        state.websites[index].crawl_status = crawl_status;
+        const [moved] = state.websites.splice(index, 1);
+        state.websites.unshift(moved);
+      }
     },
   },
   extraReducers: (builder) => {
@@ -146,7 +170,11 @@ const websiteSlice = createSlice({
       })
       .addCase(fetchWebsites.fulfilled, (state, action) => {
         state.loading = false;
-        state.websites = action.payload;
+        state.websites = (action.payload || []).slice().sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.updated_at || a.createdAt || a.created_at || 0).getTime();
+          const dateB = new Date(b.updatedAt || b.updated_at || b.createdAt || b.created_at || 0).getTime();
+          return dateB - dateA;
+        });
       })
       .addCase(fetchWebsites.rejected, (state, action) => {
         state.loading = false;
@@ -182,10 +210,23 @@ const websiteSlice = createSlice({
       .addCase(deleteWebsite.rejected, (state, action) => {
         state.error = action.payload;
       })
-      // Crawl — update crawl_status on the matching website row
+      // Crawl — update crawl_status on the matching website row & move to top
       .addCase(triggerCrawl.fulfilled, (state, action) => {
-        const site = state.websites.find((w) => w.id === action.payload.websiteId);
-        if (site) site.crawl_status = action.payload.status ?? 'crawling';
+        const index = state.websites.findIndex((w) => w.id === action.payload.websiteId);
+        if (index !== -1) {
+          state.websites[index].crawl_status = action.payload.status ?? 'crawling';
+          const [moved] = state.websites.splice(index, 1);
+          state.websites.unshift(moved);
+        }
+      })
+      // Stop crawl — update crawl_status to cancelled & move to top
+      .addCase(stopCrawl.fulfilled, (state, action) => {
+        const index = state.websites.findIndex((w) => w.id === action.payload.websiteId);
+        if (index !== -1) {
+          state.websites[index].crawl_status = 'cancelled';
+          const [moved] = state.websites.splice(index, 1);
+          state.websites.unshift(moved);
+        }
       });
   },
 });

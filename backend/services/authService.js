@@ -3,6 +3,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const mailService = require('./mailService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'sitemind-fallback-secret-key-2026';
 const JWT_EXPIRES_IN = '7d';
@@ -170,14 +171,12 @@ const requestSignupOtp = async ({ email, password, name }) => {
     expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
   });
 
-  console.log(`\n==================================================`);
-  console.log(`[AUTH] Verification OTP for ${normalizedEmail}: ${otp}`);
-  console.log(`==================================================\n`);
+  // Dispatch email via mailService
+  await mailService.sendSignupOtp(normalizedEmail, otp);
 
   return {
     message: `Verification code sent to ${normalizedEmail}`,
-    email: normalizedEmail,
-    devOtp: otp
+    email: normalizedEmail
   };
 };
 
@@ -246,14 +245,102 @@ const resendSignupOtp = async ({ email }) => {
     expiresAt: Date.now() + 10 * 60 * 1000
   });
 
-  console.log(`\n==================================================`);
-  console.log(`[AUTH] Resent Verification OTP for ${normalizedEmail}: ${otp}`);
-  console.log(`==================================================\n`);
+  // Dispatch email via mailService
+  await mailService.sendSignupOtp(normalizedEmail, otp);
 
   return {
     message: `New verification code sent to ${normalizedEmail}`,
-    email: normalizedEmail,
-    devOtp: otp
+    email: normalizedEmail
+  };
+};
+
+// In-memory store for pending password reset OTPs
+const resetOtpStore = new Map();
+
+/**
+ * Request Password Reset OTP
+ */
+const requestPasswordResetOtp = async ({ email }) => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // SECURITY: Ensure email belongs to an existing user!
+  const user = await User.findOne({ where: { email: normalizedEmail } });
+  if (!user) {
+    const error = new Error('No account found with this email address. Please check your email or sign up.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Generate 6-digit numeric OTP code
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+  resetOtpStore.set(normalizedEmail, {
+    otp,
+    userId: user.id,
+    expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
+  });
+
+  // Dispatch email via mailService
+  await mailService.sendResetPasswordOtp(normalizedEmail, otp);
+
+  return {
+    message: `Password reset code sent to ${normalizedEmail}`,
+    email: normalizedEmail
+  };
+};
+
+/**
+ * Verify OTP & Reset Password
+ */
+const resetPassword = async ({ email, otp, newPassword }) => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const user = await User.findOne({ where: { email: normalizedEmail } });
+  if (!user) {
+    const error = new Error('No account found with this email address.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const record = resetOtpStore.get(normalizedEmail);
+
+  if (!record) {
+    const error = new Error('No password reset request found or code has expired. Please request a new code.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (Date.now() > record.expiresAt) {
+    resetOtpStore.delete(normalizedEmail);
+    const error = new Error('Password reset code has expired. Please request a new code.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (record.otp !== String(otp).trim()) {
+    const error = new Error('Invalid reset code. Please check and try again.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!newPassword || newPassword.length < 8) {
+    const error = new Error('New password must be at least 8 characters long.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Hash new password and update user in database
+  const saltRounds = 10;
+  const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+  user.password_hash = passwordHash;
+  await user.save();
+
+  resetOtpStore.delete(normalizedEmail);
+
+  return {
+    message: 'Password reset successful! You can now log in with your new password.',
+    email: normalizedEmail
   };
 };
 
@@ -264,8 +351,11 @@ module.exports = {
   requestSignupOtp,
   verifySignupOtp,
   resendSignupOtp,
+  requestPasswordResetOtp,
+  resetPassword,
   generateToken,
   sanitizeUser
 };
+
 
 

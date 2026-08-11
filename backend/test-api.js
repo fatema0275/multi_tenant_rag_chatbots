@@ -35,7 +35,7 @@ const runTests = async () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ domain: 'https://trustlog-demo.com/about' })
+        body: JSON.stringify({ domain: 'https://example.com' })
       });
       const websiteData = await addRes.json();
       console.log('Add Website Status:', addRes.status);

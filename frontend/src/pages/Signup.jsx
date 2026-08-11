@@ -334,20 +334,6 @@ const Signup = () => {
                 </p>
               </div>
 
-              {/* Dev Mode OTP Display (makes testing instant) */}
-              {devOtp && (
-                <div className="p-2.5 rounded-[12px] bg-accent/10 border border-accent/30 text-[12px] font-medium text-accent flex items-center justify-between">
-                  <span>Dev OTP: <strong className="font-mono text-sm tracking-wider">{devOtp}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => setOtpInput(devOtp)}
-                    className="px-2 py-0.5 rounded-lg bg-accent text-[#09090B] font-semibold text-[10px] hover:brightness-110"
-                  >
-                    Auto-fill
-                  </button>
-                </div>
-              )}
-
               {/* Error banner */}
               <AnimatePresence>
                 {error && (
