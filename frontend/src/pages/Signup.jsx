@@ -148,7 +148,23 @@ const Signup = () => {
 
   useEffect(() => {
     dispatch(clearAuthError());
-    if (token) navigate('/dashboard');
+    if (token) {
+      const { user } = useSelector ? { user: null } : {};
+      // Navigate to admin if admin role
+      const storedUserRaw = sessionStorage.getItem('sitemind_user');
+      let isUserAdmin = false;
+      if (storedUserRaw) {
+        try {
+          const parsed = JSON.parse(storedUserRaw);
+          if (parsed?.role === 'admin') isUserAdmin = true;
+        } catch (_) {}
+      }
+      if (isUserAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
+    }
   }, [token, navigate, dispatch]);
 
   useEffect(() => {
@@ -202,7 +218,8 @@ const Signup = () => {
     const result = await dispatch(verifySignupOtp({ email: pendingEmail, otp: otpInput.trim() }));
     if (verifySignupOtp.fulfilled.match(result)) {
       toast.success('Email verified! Welcome to SiteMind.');
-      navigate('/dashboard');
+      const userRole = result.payload?.user?.role;
+      navigate(userRole === 'admin' ? '/admin' : '/dashboard');
     }
   };
 
@@ -237,7 +254,8 @@ const Signup = () => {
     const result = await dispatch(loginUser(loginData));
     if (loginUser.fulfilled.match(result)) {
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      const userRole = result.payload?.user?.role;
+      navigate(userRole === 'admin' ? '/admin' : '/dashboard');
     }
   };
 

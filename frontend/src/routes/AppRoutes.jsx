@@ -6,6 +6,7 @@
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './ProtectedRoute';
+import AdminRoute from './AdminRoute';
 import SkeletonBlock from '../components/ui/SkeletonBlock';
 
 // Lazy-load page components to enable route-based code splitting.
@@ -14,6 +15,7 @@ const Login         = lazy(() => import('../pages/Login'));
 const Signup        = lazy(() => import('../pages/Signup'));
 const ForgotPassword = lazy(() => import('../pages/ForgotPassword'));
 const Dashboard     = lazy(() => import('../pages/Dashboard'));
+const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
 
 /** Full-screen fallback while a lazy chunk loads. */
 const PageLoader = () => (
@@ -33,13 +35,23 @@ const AppRoutes = () => (
       <Route path="/signup"          element={<Signup />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
 
-      {/* Protected */}
+      {/* Protected User Dashboard */}
       <Route
         path="/dashboard"
         element={
           <ProtectedRoute>
             <Dashboard />
           </ProtectedRoute>
+        }
+      />
+
+      {/* Protected Admin Dashboard */}
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <AdminDashboard />
+          </AdminRoute>
         }
       />
 
