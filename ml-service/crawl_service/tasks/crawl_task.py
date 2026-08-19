@@ -1,36 +1,5 @@
 """
-tasks/crawl_task.py — Celery task that orchestrates a full crawl job.
-
-This is the heart of Module 2.  It is the only place that:
-  - Runs Playwright (never inside a Flask handler)
-  - Manages the per-domain rate-limit lock
-  - Coordinates the first-crawl vs incremental-crawl logic
-  - Updates crawl_jobs counters as pages complete
-
-Execution flow
---------------
-1.  Mark crawl_job as running; determine crawl_type.
-2.  Load existing pages from DB (for incremental runs).
-3.  Discover all URLs via sitemap → BFS.
-4.  For each URL (thread pool, ≤ cfg.MAX_WORKERS threads):
-      a. Check robots.txt → skip if disallowed.
-      b. Incremental only: HEAD request → compare ETag/Last-Modified.
-         If unchanged (and we have a stored hash) → mark skipped, continue.
-      c. Full GET fetch with backoff.
-      d. Extract text; if < MIN_TEXT_LENGTH → escalate to Playwright.
-      e. Compute MD5 hash; compare to stored hash.
-         If unchanged → mark skipped (content confirmed same), continue.
-      f. Upsert pages row with new content, set needs_embedding=True.
-      g. Log outcome to crawl_logs.
-      h. Increment appropriate crawl_jobs counter.
-5.  Mark URLs removed if they disappeared from this crawl.
-6.  Mark crawl_job as completed (or failed on exception).
-
-Politeness
-----------
-  - Domain-level threading.Lock prevents concurrent requests to the same host.
-  - time.sleep(crawl_delay) after every page fetch.
-  - Playwright is launched fresh per escalated page; no shared browser state.
+tasks/crawl_task.py — Celery task that orchestrates a full crawl job under site_id.
 """
 
 import logging
@@ -65,6 +34,7 @@ from crawl_service.db.crawl_jobs import (
     mark_job_failed,
     mark_job_running,
     mark_job_cancelled,
+    update_site_crawl_status,
 )
 from crawl_service.db.crawl_logs import log_page_outcome
 from crawl_service.db.pages import (
@@ -76,7 +46,6 @@ from crawl_service.db.pages import (
 
 logger = logging.getLogger(__name__)
 
-# Per-domain locks shared across threads within one worker process.
 _domain_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
 _domain_locks_guard = threading.Lock()
 
@@ -84,7 +53,6 @@ _cancelled_jobs: set[int] = set()
 
 
 def cancel_job(job_id: int) -> None:
-    """Register a manual stop/cancel request for a job."""
     _cancelled_jobs.add(job_id)
     logger.info("Job %d registered for cancellation", job_id)
 
@@ -98,31 +66,31 @@ def _get_domain_lock(domain: str) -> threading.Lock:
         return _domain_locks[domain]
 
 
-# --------------------------------------------------------------------------- #
-# Celery task definition                                                       #
-# --------------------------------------------------------------------------- #
-
 @celery.task(
     name="crawl_service.tasks.crawl_task.run_crawl",
-    bind=True,
-    max_retries=0,        # The task manages its own retries internally
-    acks_late=True,       # Don't ack until the task finishes
-    time_limit=7200,      # Hard 2-hour limit per job
-    soft_time_limit=6900, # Soft limit triggers SoftTimeLimitExceeded
+    max_retries=0,
+    acks_late=True,
+    time_limit=7200,
+    soft_time_limit=6900,
 )
-def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
+def run_crawl(job_id: int, website_id: int, domain: str, site_id: Optional[str] = None) -> dict:
     """
-    Main Celery task — orchestrates the entire crawl for one website.
+    Main Celery task — orchestrates the entire crawl for one site/website.
     """
-    logger.info("=== Crawl job %d starting: website_id=%d domain=%s ===", job_id, website_id, domain)
+    logger.info("=== Crawl job %d starting: site_id=%s website_id=%d domain=%s ===", job_id, site_id, website_id, domain)
 
-    existing_pages = get_existing_pages(website_id)
-    crawl_type = "incremental" if existing_pages else "first"
-
-    mark_job_running(job_id, crawl_type)
-    logger.info("Job %d: crawl_type=%s, existing_pages=%d", job_id, crawl_type, len(existing_pages))
+    target_site_id = site_id or str(website_id)
 
     try:
+        existing_pages = get_existing_pages(site_id=target_site_id, website_id=website_id)
+        crawl_type = "incremental" if existing_pages else "first"
+
+        mark_job_running(job_id, crawl_type)
+        if site_id:
+            update_site_crawl_status(site_id, "running")
+
+        logger.info("Job %d: crawl_type=%s, existing_pages=%d", job_id, crawl_type, len(existing_pages))
+
         scheme = "https"
         discovered_urls = discover_urls(domain, scheme, job_id=job_id)
         max_pages = getattr(cfg, "MAX_PAGES", 200)
@@ -134,6 +102,8 @@ def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
         if not target_urls:
             logger.warning("Job %d: no URLs discovered. Marking completed", job_id)
             mark_job_completed(job_id)
+            if site_id:
+                update_site_crawl_status(site_id, "completed")
             log_page_outcome(job_id, "site_crawl", "completed", "reached page limit (0/0 pages)")
             return {"job_id": job_id, "status": "completed", "pages_found": 0}
 
@@ -154,6 +124,7 @@ def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
                     url=url,
                     job_id=job_id,
                     website_id=website_id,
+                    site_id=target_site_id,
                     domain=domain,
                     scheme=scheme,
                     crawl_type=crawl_type,
@@ -187,23 +158,30 @@ def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
 
         if was_cancelled:
             mark_job_cancelled(job_id)
+            if site_id:
+                update_site_crawl_status(site_id, "cancelled")
             cancel_msg = f"Crawl stopped. {len(live_urls)}/est. {len(target_urls)} pages completed."
             log_page_outcome(job_id, "site_crawl", "cancelled", cancel_msg)
             return {"job_id": job_id, "status": "cancelled", "pages_crawled": len(live_urls)}
 
         if was_stalled:
             mark_job_failed(job_id, "stalled")
+            if site_id:
+                update_site_crawl_status(site_id, "failed")
             log_page_outcome(job_id, "site_crawl", "failed", "stalled: no progress for 5 minutes")
             return {"job_id": job_id, "status": "failed", "reason": "stalled"}
 
-        removed = mark_pages_removed(website_id, live_urls)
+        removed = mark_pages_removed(site_id=target_site_id, website_id=website_id, still_live_urls=live_urls)
         for removed_url in removed:
             log_page_outcome(job_id, removed_url, "removed", "Not found in current crawl")
 
         mark_job_completed(job_id)
+        if site_id:
+            update_site_crawl_status(site_id, "completed")
+
         limit_msg = f"reached page limit ({len(live_urls)}/{max_pages} pages)" if len(target_urls) >= max_pages else f"reached page limit ({len(live_urls)}/{len(target_urls)} pages)"
         log_page_outcome(job_id, "site_crawl", "completed", limit_msg)
-        logger.info("=== Crawl job %d completed: %s ===", job_id, limit_msg)
+        logger.info("=== Crawl job %d completed for site_id=%s: %s ===", job_id, target_site_id, limit_msg)
 
         return {
             "job_id": job_id,
@@ -216,32 +194,22 @@ def run_crawl(self, job_id: int, website_id: int, domain: str) -> dict:
         error_msg = f"{type(exc).__name__}: {exc}"
         logger.error("Crawl job %d failed: %s", job_id, error_msg, exc_info=True)
         mark_job_failed(job_id, error_msg)
+        if site_id:
+            update_site_crawl_status(site_id, "failed")
         raise
 
-
-# --------------------------------------------------------------------------- #
-# Per-page processing (runs inside thread pool)                               #
-# --------------------------------------------------------------------------- #
 
 def _process_page(
     *,
     url: str,
     job_id: int,
     website_id: int,
+    site_id: str,
     domain: str,
     scheme: str,
     crawl_type: str,
     existing_pages: dict,
 ) -> str:
-    """
-    Process one URL: check robots → optional HEAD → fetch → extract → persist.
-
-    Returns a status string: 'success' | 'skipped_unchanged' | 'failed' |
-    'robots_disallowed' | 'timeout' | 'duplicate'.
-    """
-    # ------------------------------------------------------------------ #
-    # 1. robots.txt gate                                                   #
-    # ------------------------------------------------------------------ #
     if not is_allowed(url, domain, scheme):
         log_page_outcome(job_id, url, "robots_disallowed", "Disallowed by robots.txt")
         increment_job_counter(job_id, "pages_skipped")
@@ -251,53 +219,29 @@ def _process_page(
     session = build_session()
     crawl_delay = get_crawl_delay(domain, scheme)
 
-    # Acquire domain lock — ensures only one thread hits this domain at a time
     domain_lock = _get_domain_lock(domain)
     with domain_lock:
-
-        # ------------------------------------------------------------------ #
-        # 2. Incremental: lightweight HEAD-based change detection             #
-        # ------------------------------------------------------------------ #
         if crawl_type == "incremental" and known:
             head = head_check(url, session)
-
             if head.reachable and _headers_unchanged(head, known):
-                # Headers suggest content hasn't changed — skip full fetch.
                 logger.debug("HEAD unchanged for %s — skipping", url)
-                bump_last_crawled(url, website_id)
+                bump_last_crawled(url, site_id)
                 log_page_outcome(job_id, url, "skipped_unchanged", "ETag/Last-Modified unchanged")
                 increment_job_counter(job_id, "pages_skipped")
                 time.sleep(crawl_delay)
                 return "skipped_unchanged"
 
-        # ------------------------------------------------------------------ #
-        # 3. Full HTTP fetch                                                   #
-        # ------------------------------------------------------------------ #
         result: FetchResult = fetch_page(url, session)
-
-        # Rate-limit sleep inside the lock (one domain slot)
         time.sleep(crawl_delay)
 
-    # ------------------------------------------------------------------ #
-    # 4. Handle fetch failures                                             #
-    # ------------------------------------------------------------------ #
     if not result.ok:
         status = "timeout" if result.error == "timeout" else "failed"
         log_page_outcome(job_id, url, status, result.error)
         increment_job_counter(job_id, "pages_failed")
         return status
 
-    # ------------------------------------------------------------------ #
-    # 5. Extract content                                                   #
-    # ------------------------------------------------------------------ #
     text, title = extract_text(result.html, url=url)
 
-    # ------------------------------------------------------------------ #
-    # 6. Playwright escalation (outside domain lock — JS render is slow)   #
-    # ------------------------------------------------------------------ #
-    # ------------------------------------------------------------------ #
-    # 6. Playwright escalation (optional JS rendering fallback)          #
-    # ------------------------------------------------------------------ #
     if not is_content_sufficient(text):
         try:
             pw_result = fetch_page_with_playwright(url)
@@ -310,22 +254,17 @@ def _process_page(
         except Exception as pw_err:
             logger.debug("Playwright escalation skipped: %s", pw_err)
 
-    # ------------------------------------------------------------------ #
-    # 7. MD5 hash comparison — second gate for incremental crawls          #
-    # ------------------------------------------------------------------ #
     new_hash = compute_hash(text) if text else None
 
     if crawl_type == "incremental" and known and not content_changed(text, known.get("content_hash")):
-        bump_last_crawled(url, website_id)
+        bump_last_crawled(url, site_id)
         log_page_outcome(job_id, url, "skipped_unchanged", "Content hash unchanged after extraction")
         increment_job_counter(job_id, "pages_skipped")
         return "skipped_unchanged"
 
-    # ------------------------------------------------------------------ #
-    # 8. Persist to pages table                                            #
-    # ------------------------------------------------------------------ #
     if text.strip() and new_hash:
         upsert_page(
+            site_id=site_id,
             website_id=website_id,
             url=url,
             title=title,
@@ -340,13 +279,13 @@ def _process_page(
         increment_job_counter(job_id, "pages_crawled")
         logger.info("Crawled and persisted: %s (%d chars)", url, len(text))
 
-        # Wire Module 3 storePageChunks downstream call
         try:
             import os, requests
             node_backend_url = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
             requests.post(
                 f"{node_backend_url}/api/websites/{website_id}/store-chunks",
                 json={
+                    "siteId": site_id,
                     "pageUrl": url,
                     "pageTitle": title,
                     "pageText": text,
@@ -364,19 +303,7 @@ def _process_page(
         return "failed"
 
 
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-
 def _headers_unchanged(head, known: dict) -> bool:
-    """
-    Return True if the ETag and/or Last-Modified from the HEAD response
-    match the values stored in the `pages` row for this URL.
-
-    We only skip if at least one header is present and matches.
-    If neither header is present we cannot confirm the page is unchanged,
-    so we fall through to a full fetch.
-    """
     stored_etag = known.get("http_etag")
     stored_lm = known.get("http_last_modified")
 

@@ -15,6 +15,7 @@ const Login         = lazy(() => import('../pages/Login'));
 const Signup        = lazy(() => import('../pages/Signup'));
 const ForgotPassword = lazy(() => import('../pages/ForgotPassword'));
 const Dashboard     = lazy(() => import('../pages/Dashboard'));
+const ChatbotStudio = lazy(() => import('../pages/ChatbotStudio'));
 const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
 
 /** Full-screen fallback while a lazy chunk loads. */
@@ -41,6 +42,14 @@ const AppRoutes = () => (
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/chatbot"
+        element={
+          <ProtectedRoute>
+            <ChatbotStudio />
           </ProtectedRoute>
         }
       />

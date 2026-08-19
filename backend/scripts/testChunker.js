@@ -38,9 +38,9 @@ async function runTest() {
     }
 
     // Verify all chunk lengths
-    const oversizedChunks = chunks.filter((c) => c.chunkText.length > 600);
+    const oversizedChunks = chunks.filter((c) => c.chunkText.length > 300);
     if (oversizedChunks.length === 0) {
-      console.log('\n✅ SUCCESS: All chunks are within ~500 character limit!');
+      console.log('\n✅ SUCCESS: All chunks are within ~256 character/token limit!');
     } else {
       console.error('\n❌ FAILED: Found oversized chunks:', oversizedChunks);
     }

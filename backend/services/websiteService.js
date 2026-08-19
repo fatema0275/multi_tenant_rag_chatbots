@@ -1,14 +1,14 @@
 'use strict';
 
 const crypto = require('crypto');
-const { Website, VerificationLog } = require('../models');
-
+const { Website, VerificationLog, Site } = require('../models');
 const dns = require('dns').promises;
 
 /**
  * Clean domain for website record
  */
 const cleanDomain = (domain) => {
+  if (!domain) return '';
   let cleaned = domain.trim().toLowerCase();
   cleaned = cleaned.replace(/^https?:\/\//, '');
   cleaned = cleaned.split('/')[0];
@@ -103,38 +103,76 @@ const getUserWebsites = async (userId) => {
         as: 'verificationLogs',
         limit: 1,
         order: [['verified_at', 'DESC']]
+      },
+      {
+        model: Site,
+        as: 'site'
       }
     ]
   });
 };
 
 /**
- * Register a new website for a user after pre-flight validation
+ * Register a new website for a user.
+ * Deduplication Rule: If domain was already verified by ANY user in the system (or exists in `sites`),
+ * skip pre-flight URL check and directly set verification_status = 'verified' from the database.
  */
 const createWebsite = async (userId, rawDomain) => {
-  const domain = await validateUrlPreFlight(rawDomain);
+  const cleanedDomain = cleanDomain(rawDomain);
+  if (!cleanedDomain) {
+    const error = new Error('Invalid domain format');
+    error.statusCode = 400;
+    throw error;
+  }
 
-  const existingWebsite = await Website.findOne({
-    where: { user_id: userId, domain }
+  // 1. Enforce per-user duplicate registration check
+  const existingUserWebsite = await Website.findOne({
+    where: { user_id: userId, domain: cleanedDomain }
   });
 
-  if (existingWebsite) {
+  if (existingUserWebsite) {
     const error = new Error('This website is already registered under your account');
     error.statusCode = 400;
     throw error;
   }
 
+  // 2. Check if domain is ALREADY verified for ANY user in the database (or exists in `sites`)
+  const existingVerifiedWebsite = await Website.findOne({
+    where: { domain: cleanedDomain, verification_status: 'verified' }
+  });
+
+  let siteRecord = await Site.findOne({
+    where: { domain: cleanedDomain }
+  });
+
+  const isAlreadyVerified = Boolean(existingVerifiedWebsite || siteRecord);
+  let domain = cleanedDomain;
+
+  // 3. Skip pre-flight URL reachability check if domain is already in the DB; otherwise validate.
+  if (!isAlreadyVerified) {
+    domain = await validateUrlPreFlight(rawDomain);
+  }
+
+  // 4. Ensure siteRecord exists in `sites` table
+  if (!siteRecord) {
+    siteRecord = await Site.create({
+      domain,
+      crawl_status: 'pending'
+    });
+  }
+
   const verificationToken = crypto.randomBytes(16).toString('hex');
 
-  // Create website with verification_status set to 'verified' after passing pre-flight checks
+  // 5. Create website row linked to site_id and marked 'verified'
   const website = await Website.create({
     user_id: userId,
+    site_id: siteRecord.id,
     domain,
     verification_token: verificationToken,
     verification_status: 'verified'
   });
 
-  // Log self-attestation audit trail
+  // 6. Log attestation audit trail
   await VerificationLog.create({
     website_id: website.id,
     method: 'self_attested',

@@ -18,8 +18,8 @@ async function chunkText(pageText, metadata = {}) {
   const { pageUrl, pageTitle, domSelector = null } = metadata;
 
   const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 500,
-    chunkOverlap: 50,
+    chunkSize: 256,
+    chunkOverlap: 32,
   });
 
   const chunkStrings = await splitter.splitText(pageText);

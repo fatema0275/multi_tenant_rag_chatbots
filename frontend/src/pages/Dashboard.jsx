@@ -35,6 +35,7 @@ import {
   Activity,
   Loader2,
   Check,
+  Bot,
 } from 'lucide-react';
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -401,7 +402,13 @@ const Dashboard = () => {
           </div>
 
           {/* Right side */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <a
+              href="/dashboard/chatbot"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+            >
+              <Bot className="w-3.5 h-3.5" /> Chatbot Studio
+            </a>
             <ThemeToggle />
             <div className="hidden sm:flex items-center gap-2 text-sm text-txt-secondary-light dark:text-txt-secondary-dark px-3 border-l border-zinc-200 dark:border-border-dark ml-1">
               <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />

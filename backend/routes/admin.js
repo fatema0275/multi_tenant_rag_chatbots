@@ -89,8 +89,8 @@ router.get('/users', async (req, res, next) => {
               `, { replacements: { websiteId: site.id }, type: sequelize.QueryTypes.SELECT });
 
               const [chunkCount] = await sequelize.query(`
-                SELECT COUNT(*)::int as count FROM document_chunks WHERE website_id = :websiteId;
-              `, { replacements: { websiteId: site.id }, type: sequelize.QueryTypes.SELECT });
+                SELECT COUNT(*)::int as count FROM document_chunks WHERE site_id = :siteId OR website_id = :websiteId;
+              `, { replacements: { siteId: site.site_id || null, websiteId: site.id }, type: sequelize.QueryTypes.SELECT });
 
               return {
                 ...site,
@@ -141,8 +141,8 @@ router.get('/websites', async (req, res, next) => {
           `, { replacements: { websiteId: site.id }, type: sequelize.QueryTypes.SELECT });
 
           const [chunkCount] = await sequelize.query(`
-            SELECT COUNT(*)::int as count FROM document_chunks WHERE website_id = :websiteId;
-          `, { replacements: { websiteId: site.id }, type: sequelize.QueryTypes.SELECT });
+            SELECT COUNT(*)::int as count FROM document_chunks WHERE site_id = :siteId OR website_id = :websiteId;
+          `, { replacements: { siteId: site.site_id || null, websiteId: site.id }, type: sequelize.QueryTypes.SELECT });
 
           return {
             ...site,

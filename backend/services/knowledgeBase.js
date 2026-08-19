@@ -1,22 +1,32 @@
 'use strict';
 
-const { sequelize } = require('../models');
+const { sequelize, Website } = require('../models');
 const { chunkText } = require('./chunker');
 const { embedTexts } = require('./embeddingClient');
 
 /**
- * storePageChunks — Chunks text, generates embeddings, sets RLS context, and batch stores chunks in document_chunks.
+ * storePageChunks — Chunks text, generates embeddings, and batch stores chunks in document_chunks linked to site_id.
  *
  * @param {object} params
- * @param {number} params.websiteId - Website ID (tenant).
+ * @param {string} [params.siteId] - Site UUID.
+ * @param {number} [params.websiteId] - Optional Website ID fallback to find site_id.
  * @param {string} params.pageUrl - URL of the page.
  * @param {string} params.pageTitle - Title of the page.
  * @param {string} params.pageText - Clean page text to chunk and embed.
  * @param {string} [params.domSelector] - Optional DOM selector.
  * @returns {Promise<{ chunksStored: number }>}
  */
-async function storePageChunks({ websiteId, pageUrl, pageTitle, pageText, domSelector }) {
-  // a. Chunk the page text
+async function storePageChunks({ siteId, websiteId, pageUrl, pageTitle, pageText, domSelector }) {
+  // Resolve siteId if websiteId was passed instead
+  let resolvedSiteId = siteId;
+  if (!resolvedSiteId && websiteId) {
+    const website = await Website.findByPk(websiteId);
+    if (website && website.site_id) {
+      resolvedSiteId = website.site_id;
+    }
+  }
+
+  // a. Chunk the page text (256 tokens / 32 overlap)
   const chunks = await chunkText(pageText, { pageUrl, pageTitle, domSelector });
 
   // b. Return early if no chunks returned
@@ -45,15 +55,9 @@ async function storePageChunks({ websiteId, pageUrl, pageTitle, pageText, domSel
   const t = await sequelize.transaction();
 
   try {
-    // g. Set RLS tenant context
-    await sequelize.query(
-      'SET LOCAL app.current_website_id = :websiteId;',
-      { replacements: { websiteId: String(websiteId) }, transaction: t }
-    );
-
-    // h. Build single batched INSERT query
+    // h. Build single batched INSERT query using site_id and website_id
     const valuesClauses = [];
-    const replacements = { websiteId };
+    const replacements = { siteId: resolvedSiteId || null, websiteId: websiteId || null };
 
     items.forEach((item, index) => {
       const pageUrlKey = `pageUrl_${index}`;
@@ -63,7 +67,7 @@ async function storePageChunks({ websiteId, pageUrl, pageTitle, pageText, domSel
       const embeddingKey = `embedding_${index}`;
 
       valuesClauses.push(
-        `(:websiteId, :${pageUrlKey}, :${pageTitleKey}, :${chunkTextKey}, :${embeddingKey}::vector, :${domSelectorKey})`
+        `(:siteId, :websiteId, :${pageUrlKey}, :${pageTitleKey}, :${chunkTextKey}, :${embeddingKey}::vector, :${domSelectorKey})`
       );
 
       replacements[pageUrlKey] = item.chunk.metadata.pageUrl || pageUrl;
@@ -74,7 +78,7 @@ async function storePageChunks({ websiteId, pageUrl, pageTitle, pageText, domSel
     });
 
     const insertSql = `
-      INSERT INTO document_chunks (website_id, page_url, page_title, chunk_text, embedding, dom_selector)
+      INSERT INTO document_chunks (site_id, website_id, page_url, page_title, chunk_text, embedding, dom_selector)
       VALUES ${valuesClauses.join(', ')};
     `;
 
@@ -84,14 +88,14 @@ async function storePageChunks({ websiteId, pageUrl, pageTitle, pageText, domSel
     await t.commit();
 
     // j. Log success
-    console.log(`[KnowledgeBase] Stored ${chunks.length} chunks for ${pageUrl}`);
+    console.log(`[KnowledgeBase] Stored ${chunks.length} chunks for ${pageUrl} (site_id=${resolvedSiteId})`);
 
     // k. Return count
     return { chunksStored: chunks.length };
   } catch (err) {
     // Rollback transaction on error
     try { await t.rollback(); } catch (_) {}
-    console.error(`[KnowledgeBase] Error storing chunks for websiteId=${websiteId}, pageUrl=${pageUrl}:`, err);
+    console.error(`[KnowledgeBase] Error storing chunks for siteId=${resolvedSiteId}, pageUrl=${pageUrl}:`, err);
     throw err;
   }
 }

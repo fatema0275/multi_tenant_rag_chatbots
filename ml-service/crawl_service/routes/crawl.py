@@ -4,18 +4,19 @@ routes/crawl.py — HTTP endpoints for the crawl service.
 Endpoints:
   POST /crawl
       Body: { website_id, domain, user_id }
-      Guards: website must have verification_status == 'verified' (checked
-              by the Node.js backend before forwarding here, but we do a
-              lightweight DB re-check as defence-in-depth).
-      Response 202: { job_id, status: "queued", message }
-      Response 422: website not verified / already running
-      Response 404: website_id not found in DB
+      Core Deduplication (Step 6):
+        - Check if domain exists in `sites` table.
+        - If `sites` row exists and `crawl_status == 'completed'`: skip crawl entirely
+          and link user's `websites` row (`site_id`) to existing `sites.id`.
+        - If `sites` row does not exist or is not completed: create/update `sites` row,
+          link `websites.site_id`, queue crawl, and populate `pages` & `document_chunks`
+          under `site_id`.
 
   GET /crawl/<job_id>
-      Response 200: { job_id, status, pages_found, pages_crawled,
-                      pages_failed, pages_skipped, crawl_type,
-                      started_at, completed_at, error_message }
-      Response 404: job not found
+      Response 200: job details
+
+  POST /crawl/<job_id>/stop
+      Cancel running job
 """
 
 import logging
@@ -33,17 +34,10 @@ logger = logging.getLogger(__name__)
 crawl_bp = Blueprint("crawl", __name__)
 
 
-# --------------------------------------------------------------------------- #
-# POST /crawl                                                                   #
-# --------------------------------------------------------------------------- #
 @crawl_bp.post("/crawl")
 def trigger_crawl():
     """
-    Accept a crawl request from the Node.js backend.
-
-    The Node.js crawlService already validated ownership and verification_status
-    before forwarding here, but we perform a lightweight DB check so this
-    service can be called standalone without bypassing safety gates.
+    Accept a crawl request from the Node.js backend with domain-level deduplication.
     """
     body = request.get_json(silent=True) or {}
 
@@ -51,7 +45,6 @@ def trigger_crawl():
     domain = body.get("domain")
     user_id = body.get("user_id")
 
-    # --- Input validation -------------------------------------------------- #
     if not website_id or not domain:
         return jsonify({"error": "website_id and domain are required"}), 400
 
@@ -60,24 +53,26 @@ def trigger_crawl():
     except (TypeError, ValueError):
         return jsonify({"error": "website_id must be an integer"}), 400
 
-    # --- Defence-in-depth: re-verify ownership and verification_status ------ #
+    domain_clean = domain.strip().lower()
+
+    # Re-verify website ownership & verification_status
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, domain, verification_status
+                SELECT id, domain, verification_status, site_id
                 FROM   websites
                 WHERE  id = %s
                 """,
                 (website_id,),
             )
-            row = cur.fetchone()
+            website_row = cur.fetchone()
 
-    if not row:
+    if not website_row:
         return jsonify({"error": "Website not found"}), 404
 
-    db_domain = row["domain"]
-    verification_status = row["verification_status"]
+    db_domain = website_row["domain"]
+    verification_status = website_row["verification_status"]
 
     if verification_status != "verified":
         return jsonify({
@@ -88,7 +83,74 @@ def trigger_crawl():
             )
         }), 422
 
-    # --- Prevent duplicate concurrent jobs ---------------------------------- #
+    # --- STEP 6 DEDUPLICATION LOGIC ---
+    # Check if a row already exists in `sites` for this domain
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, domain, crawl_status
+                FROM   sites
+                WHERE  LOWER(domain) = %s
+                """,
+                (domain_clean,),
+            )
+            site_row = cur.fetchone()
+
+            if site_row and site_row["crawl_status"] == "completed":
+                site_id = str(site_row["id"])
+                # Link user's websites row to existing sites.id
+                cur.execute(
+                    """
+                    UPDATE websites
+                    SET    site_id = %s
+                    WHERE  id = %s
+                    """,
+                    (site_id, website_id),
+                )
+                logger.info(
+                    "Domain '%s' already crawled (site_id=%s). Linked website_id=%s directly.",
+                    domain_clean, site_id, website_id
+                )
+                return jsonify({
+                    "job_id": None,
+                    "status": "completed",
+                    "site_id": site_id,
+                    "message": f"Domain '{db_domain}' is already crawled. Linked to shared site record.",
+                }), 200
+
+            if site_row:
+                site_id = str(site_row["id"])
+                cur.execute(
+                    """
+                    UPDATE sites
+                    SET    crawl_status = 'pending', updated_at = NOW()
+                    WHERE  id = %s
+                    """,
+                    (site_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO sites (domain, crawl_status, created_at, updated_at)
+                    VALUES (%s, 'pending', NOW(), NOW())
+                    RETURNING id
+                    """,
+                    (domain_clean,),
+                )
+                site_id = str(cur.fetchone()["id"])
+
+            # Link website to site_id
+            cur.execute(
+                """
+                UPDATE websites
+                SET    site_id = %s
+                WHERE  id = %s
+                """,
+                (site_id, website_id),
+            )
+
+    # --- Prevent duplicate concurrent jobs ---
     active_job = get_active_job_for_website(website_id)
     if active_job:
         return jsonify({
@@ -97,30 +159,26 @@ def trigger_crawl():
             "status": active_job["status"],
         }), 409
 
-    # --- Create the job record (status: queued) ----------------------------- #
+    # --- Create job record and run crawl ---
     job_id = create_crawl_job(website_id)
 
-    # --- Execute crawl task in background daemon thread for instant response --- #
     import threading
-    task_fn = getattr(run_crawl, "run", run_crawl)
     thread = threading.Thread(
-        target=task_fn,
-        args=(job_id, website_id, domain),
+        target=run_crawl.run,
+        args=(job_id, website_id, domain_clean, site_id),
         daemon=True,
     )
     thread.start()
-    logger.info("Crawl job %s started in background thread for website_id=%s domain=%s", job_id, website_id, domain)
+    logger.info("Crawl job %s started in background for site_id=%s domain=%s", job_id, site_id, domain_clean)
 
     return jsonify({
         "job_id": job_id,
+        "site_id": site_id,
         "status": "queued",
         "message": f"Crawl job queued for {db_domain}",
     }), 202
 
 
-# --------------------------------------------------------------------------- #
-# GET /crawl/<job_id>                                                           #
-# --------------------------------------------------------------------------- #
 @crawl_bp.get("/crawl/<int:job_id>")
 def get_job_status(job_id: int):
     """Return the current state of a crawl job."""
@@ -130,9 +188,6 @@ def get_job_status(job_id: int):
     return jsonify(job), 200
 
 
-# --------------------------------------------------------------------------- #
-# POST /crawl/<job_id>/stop                                                     #
-# --------------------------------------------------------------------------- #
 @crawl_bp.post("/crawl/<int:job_id>/stop")
 def stop_crawl_job(job_id: int):
     """Manually stop/cancel an active crawl job."""

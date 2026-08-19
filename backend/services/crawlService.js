@@ -5,17 +5,8 @@ const { Website } = require('../models');
 /**
  * crawlService — thin orchestration layer between the REST API and the
  * Python-based crawl/indexing bridge.
- *
- * Design decisions:
- * - Ownership and verification are checked here so the route stays thin.
- * - If CRAWL_BRIDGE_URL is not set (development), we simulate a queued job
- *   so the frontend flow can be exercised without the Python service.
- * - All errors thrown include a `statusCode` so the router can forward the
- *   correct HTTP status without a catch-all 500.
  */
 
-// Default points at the Python crawl service (ml-service) running locally.
-// Override with CRAWL_BRIDGE_URL env var in production.
 const BRIDGE_URL = process.env.CRAWL_BRIDGE_URL || null;
 
 /**
@@ -47,51 +38,57 @@ const triggerCrawl = async (userId, websiteId) => {
     throw err;
   }
 
-  // 3. Forward to the Python bridge (if configured)
+  // 3. Forward to the Python bridge (if configured) with automatic retry
   if (BRIDGE_URL) {
-    try {
-      // POST to the Flask crawl service endpoint
-      const res = await fetch(`${BRIDGE_URL}/crawl`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          website_id: websiteId,
-          domain: website.domain,
-          user_id: userId,
-        }),
-        // Hard timeout — don't wait forever for the bridge
-        signal: AbortSignal.timeout(10_000),
-      });
+    let attempts = 0;
+    const maxAttempts = 2;
 
-      const data = await res.json();
-      if (!res.ok) {
-        const err = new Error(data.error || data.detail || 'Crawl bridge returned an error');
-        err.statusCode = res.status >= 500 ? 502 : res.status;
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const res = await fetch(`${BRIDGE_URL}/crawl`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            website_id: websiteId,
+            domain: website.domain,
+            user_id: userId,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          const err = new Error(data.error || data.detail || 'Crawl bridge returned an error');
+          err.statusCode = res.status >= 500 ? 502 : res.status;
+          throw err;
+        }
+
+        return {
+          jobId: data.job_id ?? data.jobId ?? null,
+          status: 'crawling',
+          message: data.message || `Crawl job queued for ${website.domain}`,
+        };
+      } catch (bridgeErr) {
+        if (bridgeErr.statusCode) throw bridgeErr;
+
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          continue;
+        }
+
+        const err = new Error(
+          bridgeErr.name === 'AbortError'
+            ? 'Crawl bridge timed out. It may be starting up, try again shortly.'
+            : `Python bridge unreachable: ${bridgeErr.message}`
+        );
+        err.statusCode = 503;
         throw err;
       }
-
-      return {
-        jobId: data.job_id ?? data.jobId ?? null,
-        status: 'crawling',
-        message: data.message || `Crawl job queued for ${website.domain}`,
-      };
-    } catch (bridgeErr) {
-      // Re-throw structured errors from the block above unchanged
-      if (bridgeErr.statusCode) throw bridgeErr;
-
-      // AbortError = timeout; TypeError = bridge unreachable (ECONNREFUSED etc.)
-      const err = new Error(
-        bridgeErr.name === 'AbortError'
-          ? 'Crawl bridge timed out. It may be starting up, try again shortly.'
-          : `Python bridge unreachable: ${bridgeErr.message}`
-      );
-      err.statusCode = 503;
-      throw err;
     }
   }
 
   // 4. Development stub — no bridge configured
-  //    Simulate an enqueued job so the UI can be exercised end-to-end.
   return {
     jobId: null,
     status: 'crawling',
@@ -144,8 +141,8 @@ const stopCrawl = async (userId, websiteId) => {
   }
 
   const [countRows] = await sequelize.query(
-    `SELECT COUNT(*) AS total FROM pages WHERE website_id = :websiteId`,
-    { replacements: { websiteId }, type: sequelize.QueryTypes.SELECT }
+    `SELECT COUNT(*) AS total FROM pages WHERE (site_id = :siteId OR (site_id IS NULL AND website_id = :websiteId))`,
+    { replacements: { siteId: website.site_id || null, websiteId }, type: sequelize.QueryTypes.SELECT }
   );
   const pageCount = (Array.isArray(countRows) ? countRows[0] : countRows)?.total || 0;
 
@@ -156,7 +153,7 @@ const stopCrawl = async (userId, websiteId) => {
 
   try {
     await sequelize.query(
-      `INSERT INTO crawl_logs (crawl_job_id, url, status, message) VALUES (:jobId, 'site_crawl', 'cancelled', :msg)`,
+      `INSERT INTO crawl_logs (crawl_job_id, url, status, reason) VALUES (:jobId, 'site_crawl', 'cancelled', :msg)`,
       { replacements: { jobId, msg: `Crawl stopped. ${pageCount} pages completed.` } }
     );
   } catch (_) {}

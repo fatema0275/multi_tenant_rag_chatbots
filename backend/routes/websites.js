@@ -15,12 +15,13 @@ const router = express.Router();
 router.post('/:id/store-chunks', async (req, res, next) => {
   try {
     const websiteId = parseInt(req.params.id, 10);
-    const { pageUrl, pageTitle, pageText, domSelector } = req.body;
+    const { pageUrl, pageTitle, pageText, domSelector, siteId, site_id } = req.body;
 
     const { storePageChunks } = require('../services/knowledgeBase');
 
     try {
       await storePageChunks({
+        siteId: siteId || site_id || null,
         websiteId,
         pageUrl,
         pageTitle,

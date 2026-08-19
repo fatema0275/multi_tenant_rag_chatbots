@@ -8,9 +8,18 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'user_id',
         as: 'user'
       });
+      Website.belongsTo(models.Site, {
+        foreignKey: 'site_id',
+        as: 'site'
+      });
       Website.hasMany(models.VerificationLog, {
         foreignKey: 'website_id',
         as: 'verificationLogs',
+        onDelete: 'CASCADE'
+      });
+      Website.hasOne(models.ChatbotConfig, {
+        foreignKey: 'website_id',
+        as: 'chatbotConfig',
         onDelete: 'CASCADE'
       });
     }
@@ -26,6 +35,10 @@ module.exports = (sequelize, DataTypes) => {
       user_id: {
         type: DataTypes.INTEGER,
         allowNull: false
+      },
+      site_id: {
+        type: DataTypes.UUID,
+        allowNull: true
       },
       domain: {
         type: DataTypes.STRING,

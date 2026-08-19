@@ -8,9 +8,12 @@ require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const authRoutes = require('./routes/auth');
 const websiteRoutes = require('./routes/websites');
 const adminRoutes = require('./routes/admin');
+const chatbotRoutes = require('./routes/chatbot');
+const widgetRoutes = require('./routes/widget');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const BRIDGE_URL = process.env.CRAWL_BRIDGE_URL || 'http://localhost:8001';
 
 // Middleware
 app.use(cors({
@@ -19,10 +22,26 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Serve static widget JS proxied from Python bridge
+app.get('/static/widget-v1.js', async (req, res) => {
+  try {
+    const response = await fetch(`${BRIDGE_URL}/static/widget-v1.js`);
+    if (!response.ok) return res.status(response.status).end();
+    const content = await response.text();
+    res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.status(200).send(content);
+  } catch (err) {
+    return res.status(502).json({ error: `Python bridge unreachable: ${err.message}` });
+  }
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/websites', websiteRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/widget', widgetRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

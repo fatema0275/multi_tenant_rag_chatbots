@@ -1,10 +1,5 @@
 """
-db/crawl_jobs.py — CRUD helpers for the `crawl_jobs` table.
-
-All columns accessed here that were absent from the original migration
-are added by migration 20260101000015-add-crawl-job-counters.js:
-  pages_found, pages_crawled, pages_failed, pages_skipped,
-  crawl_type, error_message
+db/crawl_jobs.py — CRUD helpers for the `crawl_jobs` and `sites` tables.
 """
 
 import logging
@@ -41,7 +36,6 @@ def get_crawl_job(job_id: int) -> Optional[dict]:
 def get_active_job_for_website(website_id: int) -> Optional[dict]:
     """
     Return the first queued/running job for a website, or None.
-    Used to prevent duplicate concurrent crawl jobs.
     """
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -102,8 +96,6 @@ def mark_job_running(job_id: int, crawl_type: str) -> None:
 def increment_job_counter(job_id: int, counter: str, amount: int = 1) -> None:
     """
     Atomically increment one counter column on a crawl_jobs row.
-    `counter` must be one of: pages_found, pages_crawled, pages_failed,
-    pages_skipped.
     """
     allowed = {"pages_found", "pages_crawled", "pages_failed", "pages_skipped"}
     if counter not in allowed:
@@ -111,8 +103,6 @@ def increment_job_counter(job_id: int, counter: str, amount: int = 1) -> None:
 
     with get_db() as conn:
         with conn.cursor() as cur:
-            # Dynamic column name is safe here because we validate against
-            # a fixed whitelist above — no user input reaches this path.
             cur.execute(
                 f"UPDATE crawl_jobs SET {counter} = {counter} + %s WHERE id = %s",
                 (amount, job_id),
@@ -164,3 +154,31 @@ def mark_job_cancelled(job_id: int) -> None:
                 (datetime.now(tz=timezone.utc), job_id),
             )
 
+
+def update_site_crawl_status(site_id: str, status: str) -> None:
+    """Update crawl_status and last_crawled_at on sites table."""
+    if not site_id:
+        return
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if status == "completed":
+                cur.execute(
+                    """
+                    UPDATE sites
+                    SET    crawl_status = %s,
+                           last_crawled_at = %s,
+                           updated_at = %s
+                    WHERE  id = %s
+                    """,
+                    (status, datetime.now(tz=timezone.utc), datetime.now(tz=timezone.utc), site_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE sites
+                    SET    crawl_status = %s,
+                           updated_at = %s
+                    WHERE  id = %s
+                    """,
+                    (status, datetime.now(tz=timezone.utc), site_id),
+                )
