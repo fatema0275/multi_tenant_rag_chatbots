@@ -9,6 +9,7 @@ const WidgetLivePreview = ({
   logoUrl = null,
   websiteName = 'SiteMind AI',
   domain = 'example.com',
+  tenantId = null,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [messages, setMessages] = useState([
@@ -17,20 +18,48 @@ const WidgetLivePreview = ({
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || isTyping) return;
     const userText = input.trim();
     setMessages((prev) => [...prev, { id: Date.now(), sender: 'user', text: userText }]);
     setInput('');
     setIsTyping(true);
-    setTimeout(() => {
+
+    try {
+      const token = localStorage.getItem('token') || '';
+      const targetTenantId = tenantId || 'a1111111-1111-1111-1111-111111111111';
+      const response = await fetch(`http://localhost:5000/api/chat/${targetTenantId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ query: userText })
+      });
+
+      const data = await response.json();
+      setIsTyping(false);
+
+      if (data && data.answer) {
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now() + 1, sender: 'bot', text: data.answer },
+        ]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now() + 1, sender: 'bot', text: "I can only answer based on verified information from this site's content." },
+        ]);
+      }
+    } catch (err) {
+      console.error('[LivePreview] Error calling chat API:', err);
       setIsTyping(false);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, sender: 'bot', text: 'This is a live preview — RAG responses will appear here once connected.' },
+        { id: Date.now() + 1, sender: 'bot', text: 'Error connecting to RAG backend service. Please check your backend connection.' },
       ]);
-    }, 1200);
+    }
   };
 
   const initial = (websiteName || 'A')[0].toUpperCase();

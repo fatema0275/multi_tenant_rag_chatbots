@@ -489,7 +489,13 @@
         if (res.status === 429) {
           throw new Error('Too many requests, please wait.');
         }
-        if (!res.ok) throw new Error('Failed to get answer');
+        if (!res.ok) {
+          return res.json().then(function (errData) {
+            throw new Error(errData.error || 'Failed to get answer');
+          }).catch(function () {
+            throw new Error('Failed to get answer (HTTP ' + res.status + ')');
+          });
+        }
         return res.json();
       })
       .then(function (data) {

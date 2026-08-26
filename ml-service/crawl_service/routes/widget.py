@@ -13,6 +13,7 @@ Endpoints:
       Stubbed response for Module 4: "Query processing coming in Module 5."
 """
 
+import os
 import logging
 from flask import Blueprint, request, jsonify
 from crawl_service.db.connection import get_db
@@ -63,7 +64,7 @@ def get_public_widget_config():
 def public_widget_query():
     body = request.get_json(silent=True) or {}
     token = body.get("token") or request.args.get("token")
-    message = body.get("message", "").strip()
+    message = body.get("message", "").strip() or body.get("query", "").strip()
 
     if not token:
         return jsonify({"error": "token is required"}), 400
@@ -75,8 +76,10 @@ def public_widget_query():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id FROM chatbot_configs
-                WHERE embed_token = %s AND is_active = true
+                SELECT c.id as config_id, c.website_id, w.site_id
+                FROM chatbot_configs c
+                JOIN websites w ON c.website_id = w.id
+                WHERE c.embed_token = %s AND c.is_active = true
                 """,
                 (token,),
             )
@@ -85,7 +88,30 @@ def public_widget_query():
     if not row:
         return jsonify({"error": "Invalid or inactive widget token"}), 404
 
-    return jsonify({
-        "response": "Query processing coming in Module 5.",
-        "status": "ok",
-    }), 200
+    tenant_id = row.get("site_id") or row.get("website_id")
+    backend_url = os.getenv("BACKEND_INTERNAL_URL", "http://localhost:5000")
+    chat_endpoint = f"{backend_url}/api/chat/{tenant_id}"
+
+    try:
+        import requests
+        res = requests.post(
+            chat_endpoint,
+            json={"query": message},
+            timeout=25
+        )
+        if res.status_code == 200:
+            data = res.json()
+            return jsonify({
+                "response": data.get("answer", "No answer generated."),
+                "verified": data.get("verified", False),
+                "sources": data.get("sources", []),
+                "status": "ok",
+            }), 200
+        else:
+            err_data = res.json() if "application/json" in res.headers.get("content-type", "") else {}
+            return jsonify({
+                "error": err_data.get("error") or f"RAG processing error ({res.status_code})"
+            }), res.status_code
+    except Exception as e:
+        logger.error(f"Error calling RAG chat pipeline: {e}")
+        return jsonify({"error": f"Failed to connect to RAG processing engine: {str(e)}"}), 502

@@ -177,6 +177,7 @@ const ChatbotStudio = () => {
                         : 'SiteMind AI'
                     }
                     domain={selectedWebsite.domain}
+                    tenantId={selectedWebsite.site_id || selectedWebsite.id}
                   />
                 </div>
               </div>

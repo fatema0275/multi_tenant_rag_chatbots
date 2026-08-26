@@ -96,7 +96,9 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
     }
   };
 
-  const baseUrl = window.location.origin;
+  const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : window.location.origin;
   const embedScriptTag = config?.embed_token
     ? `<script src="${baseUrl}/static/widget-v1.js" data-token="${config.embed_token}"></script>`
     : '';
