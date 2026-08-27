@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, X, Send, Globe } from 'lucide-react';
 
@@ -17,31 +17,54 @@ const WidgetLivePreview = ({
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  // ─── Reset conversation whenever the selected website changes ───────────────
+  useEffect(() => {
+    setMessages([
+      { id: Date.now(), sender: 'bot', text: `Hello! Welcome to ${websiteName}. How can I assist you today?` },
+    ]);
+    setInput('');
+    setIsTyping(false);
+    setIsOpen(true);
+  }, [tenantId]); // <-- keyed on tenantId so each site starts fresh
+
+  // Auto-scroll to latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
 
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || isTyping) return;
     const userText = input.trim();
+    const currentTenantId = tenantId;
     setMessages((prev) => [...prev, { id: Date.now(), sender: 'user', text: userText }]);
     setInput('');
     setIsTyping(true);
 
     try {
-      const token = localStorage.getItem('token') || '';
-      const targetTenantId = tenantId || 'a1111111-1111-1111-1111-111111111111';
-      const response = await fetch(`http://localhost:5000/api/chat/${targetTenantId}`, {
+      const targetTenantId = currentTenantId || 'a1111111-1111-1111-1111-111111111111';
+
+      let response = await fetch(`http://localhost:5000/api/chat/${targetTenantId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: userText })
       });
+
+      // If 401, retry without auth header (public widget request)
+      if (response.status === 401) {
+        response = await fetch(`http://localhost:5000/api/chat/${targetTenantId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: userText })
+        });
+      }
 
       const data = await response.json();
       setIsTyping(false);
 
-      if (data && data.answer) {
+      if (response.ok && data && data.answer) {
         setMessages((prev) => [
           ...prev,
           { id: Date.now() + 1, sender: 'bot', text: data.answer },
@@ -49,7 +72,11 @@ const WidgetLivePreview = ({
       } else {
         setMessages((prev) => [
           ...prev,
-          { id: Date.now() + 1, sender: 'bot', text: "I can only answer based on verified information from this site's content." },
+          {
+            id: Date.now() + 1,
+            sender: 'bot',
+            text: data?.error || data?.answer || "Sorry, I couldn't retrieve an answer right now. Please try again.",
+          },
         ]);
       }
     } catch (err) {
@@ -57,7 +84,7 @@ const WidgetLivePreview = ({
       setIsTyping(false);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now() + 1, sender: 'bot', text: 'Error connecting to RAG backend service. Please check your backend connection.' },
+        { id: Date.now() + 1, sender: 'bot', text: 'Error connecting to the AI backend. Please check your backend connection.' },
       ]);
     }
   };
@@ -175,7 +202,7 @@ const WidgetLivePreview = ({
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 p-3 overflow-y-auto space-y-2 max-h-[180px]">
+                <div className="flex-1 p-3 overflow-y-auto space-y-2 max-h-[220px]">
                   {messages.map((m) => (
                     <div
                       key={m.id}
@@ -184,7 +211,7 @@ const WidgetLivePreview = ({
                           ? { backgroundColor: themeColor, color: '#fff' }
                           : { backgroundColor: botBubbleBg, color: textColor }
                       }
-                      className={`max-w-[85%] px-3 py-2 rounded-2xl text-[11px] leading-snug ${
+                      className={`max-w-[85%] px-3 py-2 rounded-2xl text-[11px] leading-snug whitespace-pre-wrap ${
                         m.sender === 'user' ? 'ml-auto rounded-br-none' : 'mr-auto rounded-bl-none'
                       }`}
                     >
@@ -201,6 +228,7 @@ const WidgetLivePreview = ({
                       <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.3s]" />
                     </div>
                   )}
+                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Input */}
