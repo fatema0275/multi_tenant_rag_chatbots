@@ -13,3 +13,8 @@ transformers==4.44.2
 # Utilities
 numpy==1.26.4
 requests==2.32.3
+
+# PDF & Image OCR extraction (Module 2 extension)
+pdfplumber>=0.11.0
+pdf2image>=1.17.0
+pytesseract>=0.3.13

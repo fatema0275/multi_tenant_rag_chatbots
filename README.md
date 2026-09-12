@@ -105,6 +105,14 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+> **Note on OCR Support (Module 2 Extension):**
+> Scanned PDFs and direct image processing require the Tesseract OCR engine and poppler installed at system level. In Ubuntu/Debian deployment environments, run:
+> ```bash
+> sudo apt update && sudo apt install -y tesseract-ocr poppler-utils
+> ```
+> See [DEPLOYMENT.md](DEPLOYMENT.md) for full deployment instructions.
+
+
 ---
 
 ## 5. Common issues

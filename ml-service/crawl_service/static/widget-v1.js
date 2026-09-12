@@ -43,6 +43,7 @@
   var isSending = false;
   var shadowRoot = null;
   var containerEl = null;
+  var visualPointingSessionDisabled = false;
 
   // Fetch public widget config from backend
   function fetchConfig() {
@@ -346,6 +347,73 @@
         height: 16px !important;
         fill: #ffffff !important;
       }
+
+      .sm-sources {
+        margin-top: 8px !important;
+        padding-top: 8px !important;
+        border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+      }
+
+      .sm-sources-label {
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        opacity: 0.65 !important;
+        margin-bottom: 2px !important;
+      }
+
+      .sm-source-item {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 6px !important;
+        background-color: rgba(255, 255, 255, 0.6) !important;
+        border: 1px solid rgba(0, 0, 0, 0.08) !important;
+        border-radius: 6px !important;
+        padding: 5px 8px !important;
+        font-size: 12px !important;
+      }
+
+      .sm-source-link {
+        color: ${theme} !important;
+        text-decoration: underline !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        flex: 1 !important;
+        cursor: pointer !important;
+      }
+
+      .sm-source-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        padding: 3px 7px !important;
+        background-color: rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid rgba(0, 0, 0, 0.12) !important;
+        border-radius: 4px !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        color: ${text} !important;
+        cursor: pointer !important;
+        white-space: nowrap !important;
+        transition: background-color 0.15s ease, transform 0.1s ease !important;
+      }
+
+      .sm-source-btn:hover {
+        background-color: rgba(0, 0, 0, 0.1) !important;
+      }
+
+      .sm-source-btn svg {
+        width: 12px !important;
+        height: 12px !important;
+        fill: none !important;
+        stroke: currentColor !important;
+      }
     `;
 
     var logoHtml = config.logo_url
@@ -504,8 +572,70 @@
         var botMsgEl = document.createElement('div');
         botMsgEl.className = 'sm-msg sm-msg-bot';
         botMsgEl.textContent = (data && data.response) || 'Query processing coming in Module 5.';
+
+        // Render sources section if sources exist (Step 4 & Step 5)
+        if (data && data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
+          var sourcesContainer = document.createElement('div');
+          sourcesContainer.className = 'sm-sources';
+
+          var sourcesLabel = document.createElement('div');
+          sourcesLabel.className = 'sm-sources-label';
+          sourcesLabel.textContent = 'Sources';
+          sourcesContainer.appendChild(sourcesLabel);
+
+          data.sources.forEach(function (src) {
+            if (!src || !src.page_url) return;
+
+            var samePage = isSamePage(src.page_url);
+            var itemEl = document.createElement('div');
+            itemEl.className = 'sm-source-item';
+
+            var linkEl = document.createElement('a');
+            linkEl.className = 'sm-source-link';
+            linkEl.href = src.page_url;
+            linkEl.title = src.page_title || src.page_url;
+            linkEl.textContent = samePage ? 'View source' : 'Go to source page';
+            if (samePage) {
+              linkEl.target = '_blank';
+              linkEl.rel = 'noopener noreferrer';
+            } else {
+              linkEl.target = '_self';
+            }
+
+            var btnEl = document.createElement('button');
+            btnEl.className = 'sm-source-btn';
+            btnEl.title = 'Show on page';
+            btnEl.setAttribute('aria-label', 'Show on page');
+            btnEl.innerHTML = `
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" stroke-width="2"/>
+                <circle cx="12" cy="12" r="3" stroke-width="2"/>
+                <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
+              </svg>
+              Show on page
+            `;
+
+            btnEl.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              attemptVisualPointing(src, true);
+            });
+
+            itemEl.appendChild(linkEl);
+            itemEl.appendChild(btnEl);
+            sourcesContainer.appendChild(itemEl);
+          });
+
+          botMsgEl.appendChild(sourcesContainer);
+        }
+
         messagesEl.appendChild(botMsgEl);
         messagesEl.scrollTop = messagesEl.scrollHeight;
+
+        // Auto-attempt visual pointing on top retrieved source (Step 4)
+        if (data && data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
+          attemptVisualPointing(data.sources[0], false);
+        }
       })
       .catch(function (err) {
         if (messagesEl.contains(typingEl)) {
@@ -522,6 +652,191 @@
         isSending = false;
         sendBtn.disabled = false;
       });
+  }
+
+  // ========================================================================= //
+  // Module 7 Visual Pointing & Live Page Highlighting Helpers                  //
+  // ========================================================================= //
+
+  function logDevOnly(msg) {
+    try {
+      var isDev = (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.__DEV__ === true
+      );
+      if (isDev) {
+        console.log(msg);
+      }
+    } catch (_) {}
+  }
+
+  function isDomainAllowed() {
+    if (visualPointingSessionDisabled) return false;
+    var currentHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
+    var registered = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
+    if (!registered || !currentHost) {
+      visualPointingSessionDisabled = true;
+      return false;
+    }
+    // Allow exact match or subdomain match
+    if (currentHost !== registered && !currentHost.endsWith('.' + registered)) {
+      visualPointingSessionDisabled = true;
+      return false;
+    }
+    return true;
+  }
+
+  function normalizeUrl(url) {
+    if (!url) return '';
+    try {
+      var u = new URL(url, window.location.origin);
+      return (u.origin + u.pathname).replace(/\/+$/, '').toLowerCase();
+    } catch (e) {
+      return (url || '').split('?')[0].split('#')[0].replace(/\/+$/, '').toLowerCase();
+    }
+  }
+
+  function isSamePage(sourceUrl) {
+    if (!sourceUrl) return false;
+    var currentNorm = normalizeUrl(window.location.href);
+    var sourceNorm = normalizeUrl(sourceUrl);
+    return Boolean(currentNorm && sourceNorm && currentNorm === sourceNorm);
+  }
+
+  function attemptVisualPointing(source, isManual) {
+    // Entire visual pointing logic wrapped in try-catch — silently aborts on any error
+    try {
+      // 1. Hostname check vs registered domain
+      if (!isDomainAllowed()) {
+        return;
+      }
+
+      if (!source || !source.page_url) {
+        return;
+      }
+
+      // 2. SPA and wrong-page handling (Step 5)
+      if (!isSamePage(source.page_url)) {
+        if (isManual) {
+          // If manually triggered for a different page, navigate to where content lives in same tab
+          window.location.href = source.page_url;
+        }
+        return;
+      }
+
+      // 3. Extract snippet from dom_selector JSON or fallback to text_snippet
+      var snippet = null;
+      if (source.dom_selector) {
+        try {
+          var parsed = typeof source.dom_selector === 'string'
+            ? JSON.parse(source.dom_selector)
+            : source.dom_selector;
+          if (parsed && parsed.snippet) {
+            snippet = parsed.snippet;
+          }
+        } catch (jsonErr) {}
+      }
+
+      if (!snippet && source.text_snippet) {
+        snippet = source.text_snippet;
+      }
+
+      if (!snippet) {
+        logDevOnly('visual-point-failed');
+        return;
+      }
+
+      var snippetLower = snippet.trim().toLowerCase();
+      if (!snippetLower) {
+        logDevOnly('visual-point-failed');
+        return;
+      }
+
+      // 4. Walk document.querySelectorAll('p, li, h2, h3, h4, td, div') on host document (outside shadow root)
+      var candidates = document.querySelectorAll('p, li, h2, h3, h4, td, div');
+      var matchedEl = null;
+
+      for (var i = 0; i < candidates.length; i++) {
+        var el = candidates[i];
+        if (containerEl && containerEl.contains(el)) continue;
+        var text = (el.innerText || el.textContent || '').toLowerCase();
+        if (text.includes(snippetLower)) {
+          matchedEl = el;
+          break;
+        }
+      }
+
+      // Sub-sentence fallback (first 40 chars) if full 80-char sentence was split across nested tags
+      if (!matchedEl && snippetLower.length > 40) {
+        var shorter = snippetLower.slice(0, 40);
+        for (var j = 0; j < candidates.length; j++) {
+          var cel = candidates[j];
+          if (containerEl && containerEl.contains(cel)) continue;
+          if ((cel.innerText || cel.textContent || '').toLowerCase().includes(shorter)) {
+            matchedEl = cel;
+            break;
+          }
+        }
+      }
+
+      // 5. If no element matched, log 'visual-point-failed' in dev mode only and move on
+      if (!matchedEl) {
+        logDevOnly('visual-point-failed');
+        return;
+      }
+
+      // 6. Highlight style injection (Step 4 & Step 6)
+      var styleId = 'sitemind-highlight-style';
+      var existingStyle = document.getElementById(styleId);
+      if (!existingStyle) {
+        var styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        styleEl.textContent = `
+          @keyframes sitemindHighlightPulse {
+            0% {
+              background-color: #FFF176 !important;
+              background-color: rgba(255, 235, 59, 0.6) !important;
+              box-shadow: 0 0 10px rgba(255, 235, 59, 0.7) !important;
+            }
+            100% {
+              background-color: transparent !important;
+              background-color: rgba(255, 235, 59, 0) !important;
+              box-shadow: none !important;
+            }
+          }
+          .sitemind-highlight-pulse {
+            animation: sitemindHighlightPulse 3s ease-out forwards !important;
+            border-radius: 4px !important;
+          }
+        `;
+        document.head.appendChild(styleEl);
+      }
+
+      // Add highlight class and scroll into view smoothly
+      matchedEl.classList.add('sitemind-highlight-pulse');
+      matchedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Remove class after 3500ms
+      setTimeout(function () {
+        try {
+          matchedEl.classList.remove('sitemind-highlight-pulse');
+        } catch (_) {}
+      }, 3500);
+
+      // Clean up injected style tag from document.head after 4000ms (Step 6)
+      setTimeout(function () {
+        try {
+          var tag = document.getElementById(styleId);
+          if (tag && tag.parentNode) {
+            tag.parentNode.removeChild(tag);
+          }
+        } catch (_) {}
+      }, 4000);
+
+    } catch (err) {
+      // Silently abort visual pointing on any error
+    }
   }
 
   // Kick off config fetch on load

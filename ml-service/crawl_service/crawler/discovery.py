@@ -179,13 +179,23 @@ def _bfs_discover(
         def _fetch_url(u: str):
             try:
                 resp = requests.get(u, headers=headers, timeout=5, allow_redirects=True)
-                if resp.status_code == 200 and "text/html" in resp.headers.get("Content-Type", ""):
-                    if job_id:
-                        try:
-                            increment_job_counter(job_id, "pages_found", 1)
-                        except Exception:
-                            pass
-                    return u, resp.text
+                if resp.status_code == 200:
+                    ct = resp.headers.get("Content-Type", "").lower()
+                    u_path = urlparse(u).path.lower()
+                    is_html = "text/html" in ct
+                    is_pdf = "application/pdf" in ct or u_path.endswith(".pdf")
+                    is_img = (
+                        any(t in ct for t in ["image/jpeg", "image/png", "image/webp", "image/gif"])
+                        or any(u_path.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"])
+                    )
+                    if is_html or is_pdf or is_img:
+                        if job_id:
+                            try:
+                                increment_job_counter(job_id, "pages_found", 1)
+                            except Exception:
+                                pass
+                        # Return (url, html_str_or_empty)
+                        return u, (resp.text if is_html else "")
             except Exception:
                 pass
             return u, None
@@ -194,15 +204,16 @@ def _bfs_discover(
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = [pool.submit(_fetch_url, u) for u in candidates]
             for fut in as_completed(futures):
-                u, html = fut.result()
-                if html:
+                u, html_content = fut.result()
+                if html_content is not None:
                     found.append(u)
                     level_new_found += 1
                     if len(found) >= cfg.MAX_PAGES:
                         break
-                    if depth < cfg.MAX_DEPTH:
+                    # Only HTML pages contain further child links to crawl
+                    if html_content and depth < cfg.MAX_DEPTH:
                         try:
-                            soup = BeautifulSoup(html, "html.parser")
+                            soup = BeautifulSoup(html_content, "html.parser")
                             for a_tag in soup.find_all("a", href=True):
                                 href = a_tag["href"].strip()
                                 abs_url = urljoin(u, href)
@@ -211,6 +222,7 @@ def _bfs_discover(
                                     next_level.add(norm_child)
                         except Exception:
                             pass
+
 
         if job_id and level_new_found > 0:
             try:

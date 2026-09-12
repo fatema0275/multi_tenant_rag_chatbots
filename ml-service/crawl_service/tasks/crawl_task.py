@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
+import posixpath
 from typing import Optional
 
 from crawl_service.celery_app import celery
@@ -16,8 +17,11 @@ from crawl_service.crawler.discovery import discover_urls
 from crawl_service.crawler.extractor import (
     compute_hash,
     content_changed,
+    extract_image_title,
     extract_text,
+    image_extract,
     is_content_sufficient,
+    pdf_extract,
 )
 from crawl_service.crawler.fetcher import (
     FetchResult,
@@ -148,8 +152,9 @@ def run_crawl(job_id: int, website_id: int, domain: str, site_id: Optional[str] 
                 try:
                     outcome = future.result()
                     last_progress_time = time.time()
-                    if outcome in ("success", "skipped_unchanged", "duplicate"):
+                    if outcome in ("success", "success-ocr", "success-ocr-image", "skipped_unchanged", "duplicate"):
                         live_urls.add(url)
+
                 except Exception as exc:
                     logger.error("Unhandled exception processing %s: %s", url, exc, exc_info=True)
                     log_page_outcome(job_id, url, "failed", str(exc))
@@ -199,6 +204,32 @@ def run_crawl(job_id: int, website_id: int, domain: str, site_id: Optional[str] 
         raise
 
 
+def _notify_node_backend(
+    website_id: int,
+    site_id: str,
+    url: str,
+    title: Optional[str],
+    text: str,
+) -> None:
+    """Notify Node.js backend to generate and store document chunks (Module 3)."""
+    try:
+        import os, requests
+        node_backend_url = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
+        requests.post(
+            f"{node_backend_url}/api/websites/{website_id}/store-chunks",
+            json={
+                "siteId": site_id,
+                "pageUrl": url,
+                "pageTitle": title,
+                "pageText": text,
+                "domSelector": None,
+            },
+            timeout=15,
+        )
+    except Exception as kb_err:
+        logger.error("Failed to store chunks for %s: %s", url, kb_err)
+
+
 def _process_page(
     *,
     url: str,
@@ -240,67 +271,181 @@ def _process_page(
         increment_job_counter(job_id, "pages_failed")
         return status
 
-    text, title = extract_text(result.html, url=url)
+    # ======================================================================= #
+    # CONTENT-TYPE ROUTING DECISION TREE
+    # ======================================================================= #
+    # Inspect Content-Type header and URL path to determine format:
+    #   1. PDF Documents: 'application/pdf' or path ends with '.pdf'
+    #      -> Routed to pdf_extract(result.content, url)
+    #      -> Native text layer (>= 50 chars): status='success', source_type='pdf'
+    #      -> Scanned PDF (< 50 chars): OCR fallback (pdf2image 200 DPI + pytesseract)
+    #         * OCR text non-empty: status='success-ocr', source_type='pdf-ocr'
+    #         * OCR empty: status='skipped-image-only', skip page
+    #   2. Direct Image URLs: 'image/jpeg', 'image/png', 'image/webp', 'image/gif'
+    #      or path ends with ('.jpg', '.jpeg', '.png', '.webp')
+    #      -> Routed to image_extract(result.content, url) via PIL + pytesseract
+    #      -> Filename used as page title
+    #      -> OCR text > 20 chars: status='success-ocr-image', source_type='image-ocr'
+    #      -> OCR text <= 20 chars: status='skipped-image-no-text', skip page
+    #   3. HTML Webpages (Default):
+    #      -> Routed to extract_text(result.html, url) (Trafilatura + BS4 fallback)
+    #      -> Captures img alt attributes and figcaption text (> 10 chars)
+    #      -> Playwright escalation if text < cfg.MIN_TEXT_LENGTH
+    #      -> status='success', source_type='html'
+    # ======================================================================= #
 
-    if not is_content_sufficient(text):
-        try:
-            pw_result = fetch_page_with_playwright(url)
-            if pw_result.ok and pw_result.html:
-                text_pw, title_pw = extract_text(pw_result.html, url=url)
-                if text_pw:
-                    text = text_pw
-                if title_pw:
-                    title = title_pw
-        except Exception as pw_err:
-            logger.debug("Playwright escalation skipped: %s", pw_err)
+    content_type = (result.content_type or "").lower()
+    url_path = urlparse(url).path.lower()
 
-    new_hash = compute_hash(text) if text else None
+    is_pdf = "application/pdf" in content_type or url_path.endswith(".pdf")
+    is_image = (
+        any(ct in content_type for ct in ["image/jpeg", "image/png", "image/webp", "image/gif"])
+        or any(url_path.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"])
+    )
 
-    if crawl_type == "incremental" and known and not content_changed(text, known.get("content_hash")):
-        bump_last_crawled(url, site_id)
-        log_page_outcome(job_id, url, "skipped_unchanged", "Content hash unchanged after extraction")
-        increment_job_counter(job_id, "pages_skipped")
-        return "skipped_unchanged"
+    # ----------------------------------------------------------------------- #
+    # BRANCH A: PDF Document Handling
+    # ----------------------------------------------------------------------- #
+    if is_pdf:
+        pdf_text, is_ocr = pdf_extract(result.content, url=url)
+        if not pdf_text:
+            log_page_outcome(
+                job_id,
+                url,
+                "skipped-image-only",
+                "PDF has no extractable text layer and OCR returned empty",
+            )
+            increment_job_counter(job_id, "pages_skipped")
+            return "skipped-image-only"
 
-    if text.strip() and new_hash:
+        source_type = "pdf-ocr" if is_ocr else "pdf"
+        log_status = "success-ocr" if is_ocr else "success"
+        pdf_title = posixpath.basename(urlparse(url).path.rstrip("/")) or "PDF Document"
+
+        new_hash = compute_hash(pdf_text)
+        if crawl_type == "incremental" and known and not content_changed(pdf_text, known.get("content_hash")):
+            bump_last_crawled(url, site_id)
+            log_page_outcome(job_id, url, "skipped_unchanged", "Content hash unchanged after extraction")
+            increment_job_counter(job_id, "pages_skipped")
+            return "skipped_unchanged"
+
         upsert_page(
             site_id=site_id,
             website_id=website_id,
             url=url,
-            title=title,
-            raw_text=text,
+            title=pdf_title,
+            raw_text=pdf_text,
             content_hash=new_hash,
             http_etag=result.etag,
             http_last_modified=result.last_modified,
             needs_embedding=True,
+            source_type=source_type,
         )
 
-        log_page_outcome(job_id, url, "success")
+        log_page_outcome(job_id, url, log_status)
         increment_job_counter(job_id, "pages_crawled")
-        logger.info("Crawled and persisted: %s (%d chars)", url, len(text))
+        logger.info("Crawled and persisted %s (%s): %s (%d chars)", source_type, log_status, url, len(pdf_text))
 
-        try:
-            import os, requests
-            node_backend_url = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
-            requests.post(
-                f"{node_backend_url}/api/websites/{website_id}/store-chunks",
-                json={
-                    "siteId": site_id,
-                    "pageUrl": url,
-                    "pageTitle": title,
-                    "pageText": text,
-                    "domSelector": None,
-                },
-                timeout=15,
+        _notify_node_backend(website_id, site_id, url, pdf_title, pdf_text)
+        return log_status
+
+    # ----------------------------------------------------------------------- #
+    # BRANCH B: Direct Image URLs Handling
+    # ----------------------------------------------------------------------- #
+    elif is_image:
+        image_text = image_extract(result.content, url=url)
+        if not image_text:
+            log_page_outcome(
+                job_id,
+                url,
+                "skipped-image-no-text",
+                "Image OCR yielded <= 20 characters of text",
             )
-        except Exception as kb_err:
-            logger.error("Failed to store chunks for %s: %s", url, kb_err)
+            increment_job_counter(job_id, "pages_skipped")
+            return "skipped-image-no-text"
 
-        return "success"
+        source_type = "image-ocr"
+        log_status = "success-ocr-image"
+        img_title = extract_image_title(url)
+
+        new_hash = compute_hash(image_text)
+        if crawl_type == "incremental" and known and not content_changed(image_text, known.get("content_hash")):
+            bump_last_crawled(url, site_id)
+            log_page_outcome(job_id, url, "skipped_unchanged", "Content hash unchanged after extraction")
+            increment_job_counter(job_id, "pages_skipped")
+            return "skipped_unchanged"
+
+        upsert_page(
+            site_id=site_id,
+            website_id=website_id,
+            url=url,
+            title=img_title,
+            raw_text=image_text,
+            content_hash=new_hash,
+            http_etag=result.etag,
+            http_last_modified=result.last_modified,
+            needs_embedding=True,
+            source_type=source_type,
+        )
+
+        log_page_outcome(job_id, url, log_status)
+        increment_job_counter(job_id, "pages_crawled")
+        logger.info("Crawled and persisted %s (%s): %s (%d chars)", source_type, log_status, url, len(image_text))
+
+        _notify_node_backend(website_id, site_id, url, img_title, image_text)
+        return log_status
+
+    # ----------------------------------------------------------------------- #
+    # BRANCH C: HTML Webpage Handling (Default)
+    # ----------------------------------------------------------------------- #
     else:
-        log_page_outcome(job_id, url, "failed", "No content extracted from page")
-        increment_job_counter(job_id, "pages_failed")
-        return "failed"
+        text, title = extract_text(result.html, url=url)
+
+        if not is_content_sufficient(text):
+            try:
+                pw_result = fetch_page_with_playwright(url)
+                if pw_result.ok and pw_result.html:
+                    text_pw, title_pw = extract_text(pw_result.html, url=url)
+                    if text_pw:
+                        text = text_pw
+                    if title_pw:
+                        title = title_pw
+            except Exception as pw_err:
+                logger.debug("Playwright escalation skipped: %s", pw_err)
+
+        new_hash = compute_hash(text) if text else None
+
+        if crawl_type == "incremental" and known and not content_changed(text, known.get("content_hash")):
+            bump_last_crawled(url, site_id)
+            log_page_outcome(job_id, url, "skipped_unchanged", "Content hash unchanged after extraction")
+            increment_job_counter(job_id, "pages_skipped")
+            return "skipped_unchanged"
+
+        if text.strip() and new_hash:
+            upsert_page(
+                site_id=site_id,
+                website_id=website_id,
+                url=url,
+                title=title,
+                raw_text=text,
+                content_hash=new_hash,
+                http_etag=result.etag,
+                http_last_modified=result.last_modified,
+                needs_embedding=True,
+                source_type="html",
+            )
+
+            log_page_outcome(job_id, url, "success")
+            increment_job_counter(job_id, "pages_crawled")
+            logger.info("Crawled and persisted: %s (%d chars)", url, len(text))
+
+            _notify_node_backend(website_id, site_id, url, title, text)
+            return "success"
+        else:
+            log_page_outcome(job_id, url, "failed", "No content extracted from page")
+            increment_job_counter(job_id, "pages_failed")
+            return "failed"
+
 
 
 def _headers_unchanged(head, known: dict) -> bool:

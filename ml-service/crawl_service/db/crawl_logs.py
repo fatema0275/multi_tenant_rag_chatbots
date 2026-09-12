@@ -29,7 +29,12 @@ VALID_STATUSES = frozenset({
     "duplicate",
     "skipped_unchanged",
     "removed",
+    "success-ocr",
+    "skipped-image-only",
+    "success-ocr-image",
+    "skipped-image-no-text",
 })
+
 
 
 def log_page_outcome(

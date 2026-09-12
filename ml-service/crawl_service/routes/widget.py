@@ -76,7 +76,7 @@ def public_widget_query():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT c.id as config_id, c.website_id, w.site_id
+                SELECT c.id as config_id, c.website_id, w.site_id, w.domain
                 FROM chatbot_configs c
                 JOIN websites w ON c.website_id = w.id
                 WHERE c.embed_token = %s AND c.is_active = true
@@ -89,11 +89,14 @@ def public_widget_query():
         return jsonify({"error": "Invalid or inactive widget token"}), 404
 
     tenant_id = row.get("site_id") or row.get("website_id")
+    registered_domain = (row.get("domain") or "").strip()
     backend_url = os.getenv("BACKEND_INTERNAL_URL", "http://localhost:5000")
     chat_endpoint = f"{backend_url}/api/chat/{tenant_id}"
 
     try:
         import requests
+        from urllib.parse import urlparse
+
         res = requests.post(
             chat_endpoint,
             json={"query": message},
@@ -101,10 +104,80 @@ def public_widget_query():
         )
         if res.status_code == 200:
             data = res.json()
+            raw_sources = data.get("sources", [])
+
+            # Enrich sources with dom_selector and text_snippet from document_chunks
+            chunk_ids = [s.get("chunk_id") for s in raw_sources if s.get("chunk_id") is not None]
+            chunk_map = {}
+            if chunk_ids:
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT id, page_url, page_title, dom_selector, text_snippet
+                            FROM document_chunks
+                            WHERE id = ANY(%s)
+                            """,
+                            (chunk_ids,),
+                        )
+                        for r in cur.fetchall():
+                            chunk_map[r["id"]] = r
+
+            def clean_host(host_or_url: str) -> str:
+                if not host_or_url:
+                    return ""
+                h = host_or_url.strip().lower()
+                if not h.startswith("http://") and not h.startswith("https://"):
+                    h = "http://" + h
+                try:
+                    netloc = urlparse(h).netloc.split(":")[0]
+                    if netloc.startswith("www."):
+                        netloc = netloc[4:]
+                    return netloc
+                except Exception:
+                    return ""
+
+            reg_host = clean_host(registered_domain)
+            seen_page_urls = set()
+            enriched_sources = []
+
+            for s in raw_sources:
+                cid = s.get("chunk_id")
+                chunk_info = chunk_map.get(cid, {})
+                page_url = chunk_info.get("page_url") or s.get("page_url") or ""
+                page_title = chunk_info.get("page_title") or s.get("page_title") or "Source"
+                dom_selector = chunk_info.get("dom_selector") or s.get("dom_selector")
+                text_snippet = chunk_info.get("text_snippet") or s.get("text_snippet")
+
+                # Normalize URL for deduplication
+                norm_url = page_url.split("?")[0].split("#")[0].rstrip("/").lower() if page_url else ""
+                is_top_for_page = False
+                if norm_url and norm_url not in seen_page_urls:
+                    seen_page_urls.add(norm_url)
+                    is_top_for_page = True
+
+                # Check if page_url domain matches website's registered domain
+                page_host = clean_host(page_url)
+                domain_matches = bool(
+                    page_host and reg_host and (page_host == reg_host or page_host.endswith("." + reg_host))
+                )
+
+                # Only include dom_selector for top retrieved chunk per unique page_url when domains match
+                effective_dom_selector = dom_selector if (is_top_for_page and domain_matches) else None
+
+                enriched_sources.append({
+                    "chunk_id": cid,
+                    "similarity": s.get("similarity"),
+                    "page_url": page_url,
+                    "page_title": page_title,
+                    "dom_selector": effective_dom_selector,
+                    "text_snippet": text_snippet,
+                })
+
             return jsonify({
                 "response": data.get("answer", "No answer generated."),
                 "verified": data.get("verified", False),
-                "sources": data.get("sources", []),
+                "sources": enriched_sources,
                 "status": "ok",
             }), 200
         else:

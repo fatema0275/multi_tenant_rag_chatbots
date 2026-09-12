@@ -45,6 +45,8 @@ class FetchResult:
     """The outcome of fetching a single page."""
     url: str
     html: str = ""
+    content: bytes = field(default_factory=bytes)
+    content_type: str = ""
     status_code: int = 0
     etag: Optional[str] = None
     last_modified: Optional[str] = None
@@ -55,6 +57,7 @@ class FetchResult:
     @property
     def ok(self) -> bool:
         return self.error is None
+
 
 
 @dataclass
@@ -150,13 +153,18 @@ def fetch_page(url: str, session: requests.Session) -> FetchResult:
                 error=f"http_{resp.status_code}",
             )
 
+        ct = resp.headers.get("Content-Type", "")
+        is_binary = any(b in ct.lower() for b in ["pdf", "image/"])
         return FetchResult(
             url=url,
-            html=resp.text,
+            html="" if is_binary else resp.text,
+            content=resp.content,
+            content_type=ct,
             status_code=resp.status_code,
             etag=resp.headers.get("ETag"),
             last_modified=resp.headers.get("Last-Modified"),
         )
+
 
     # Exhausted retries
     return FetchResult(url=url, error=f"max_retries_exceeded")

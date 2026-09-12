@@ -32,7 +32,7 @@ def get_existing_pages(site_id: Optional[str] = None, website_id: Optional[int] 
                 cur.execute(
                     """
                     SELECT id, url, content_hash,
-                           http_etag, http_last_modified, crawl_status
+                           http_etag, http_last_modified, crawl_status, source_type
                     FROM   pages
                     WHERE  site_id = %s::uuid OR (site_id IS NULL AND website_id = %s)
                     """,
@@ -42,7 +42,7 @@ def get_existing_pages(site_id: Optional[str] = None, website_id: Optional[int] 
                 cur.execute(
                     """
                     SELECT id, url, content_hash,
-                           http_etag, http_last_modified, crawl_status
+                           http_etag, http_last_modified, crawl_status, source_type
                     FROM   pages
                     WHERE  website_id = %s
                     """,
@@ -52,7 +52,7 @@ def get_existing_pages(site_id: Optional[str] = None, website_id: Optional[int] 
                 cur.execute(
                     """
                     SELECT id, url, content_hash,
-                           http_etag, http_last_modified, crawl_status
+                           http_etag, http_last_modified, crawl_status, source_type
                     FROM   pages
                     WHERE  website_id = %s
                     """,
@@ -69,6 +69,7 @@ def get_existing_pages(site_id: Optional[str] = None, website_id: Optional[int] 
             "http_etag": row["http_etag"],
             "http_last_modified": row["http_last_modified"],
             "crawl_status": row["crawl_status"],
+            "source_type": row.get("source_type") or "html",
         }
         for row in rows
     }
@@ -85,6 +86,7 @@ def upsert_page(
     http_etag: Optional[str] = None,
     http_last_modified: Optional[str] = None,
     needs_embedding: bool = True,
+    source_type: str = "html",
 ) -> int:
     """
     Insert a new page or update an existing one under site_id.
@@ -99,9 +101,9 @@ def upsert_page(
                 INSERT INTO pages
                     (site_id, website_id, url, title, raw_text, content_hash,
                      http_etag, http_last_modified, crawl_status,
-                     needs_embedding, last_crawled_at, created_at)
+                     needs_embedding, last_crawled_at, created_at, source_type)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s, %s)
                 ON CONFLICT (site_id, url) WHERE site_id IS NOT NULL DO UPDATE SET
                     title             = EXCLUDED.title,
                     raw_text          = EXCLUDED.raw_text,
@@ -110,7 +112,8 @@ def upsert_page(
                     http_last_modified= EXCLUDED.http_last_modified,
                     crawl_status      = 'active',
                     needs_embedding   = EXCLUDED.needs_embedding,
-                    last_crawled_at   = EXCLUDED.last_crawled_at
+                    last_crawled_at   = EXCLUDED.last_crawled_at,
+                    source_type       = EXCLUDED.source_type
                 RETURNING id
                 """,
                 (
@@ -125,6 +128,7 @@ def upsert_page(
                     needs_embedding,
                     now,
                     now,
+                    source_type,
                 ),
             )
             row = cur.fetchone()

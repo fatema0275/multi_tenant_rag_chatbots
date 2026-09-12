@@ -64,10 +64,11 @@ async function storePageChunks({ siteId, websiteId, pageUrl, pageTitle, pageText
       const pageTitleKey = `pageTitle_${index}`;
       const chunkTextKey = `chunkText_${index}`;
       const domSelectorKey = `domSelector_${index}`;
+      const textSnippetKey = `textSnippet_${index}`;
       const embeddingKey = `embedding_${index}`;
 
       valuesClauses.push(
-        `(:siteId, :websiteId, :${pageUrlKey}, :${pageTitleKey}, :${chunkTextKey}, :${embeddingKey}::vector, :${domSelectorKey})`
+        `(:siteId, :websiteId, :${pageUrlKey}, :${pageTitleKey}, :${chunkTextKey}, :${embeddingKey}::vector, :${domSelectorKey}, :${textSnippetKey})`
       );
 
       replacements[pageUrlKey] = item.chunk.metadata.pageUrl || pageUrl;
@@ -75,10 +76,11 @@ async function storePageChunks({ siteId, websiteId, pageUrl, pageTitle, pageText
       replacements[chunkTextKey] = item.chunk.chunkText;
       replacements[embeddingKey] = `[${item.embedding.join(',')}]`;
       replacements[domSelectorKey] = item.chunk.metadata.domSelector || domSelector || null;
+      replacements[textSnippetKey] = item.chunk.textSnippet || item.chunk.chunkText.slice(0, 120);
     });
 
     const insertSql = `
-      INSERT INTO document_chunks (site_id, website_id, page_url, page_title, chunk_text, embedding, dom_selector)
+      INSERT INTO document_chunks (site_id, website_id, page_url, page_title, chunk_text, embedding, dom_selector, text_snippet)
       VALUES ${valuesClauses.join(', ')};
     `;
 
