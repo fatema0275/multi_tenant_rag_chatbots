@@ -143,7 +143,8 @@ router.post('/:id/crawl', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid website ID' });
     }
 
-    const result = await crawlService.triggerCrawl(req.userId, websiteId);
+    const force = Boolean(req.body && req.body.force);
+    const result = await crawlService.triggerCrawl(req.userId, websiteId, force);
     return res.status(202).json(result);
   } catch (err) {
     if (err.statusCode) {

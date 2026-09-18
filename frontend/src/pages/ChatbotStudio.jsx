@@ -7,6 +7,7 @@ import SkeletonBlock from '../components/ui/SkeletonBlock';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import toast from 'react-hot-toast';
 import {
+  Bot,
   Palette,
   Sliders,
   Code,
@@ -118,7 +119,7 @@ const ChatbotStudio = () => {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && !data.error) {
+        if (data && !data.error && data.exists !== false) {
           setConfig(data);
           setThemeColor(data.theme_color || '#22C55E');
           setBackgroundColor(data.background_color || '#ffffff');
@@ -160,6 +161,11 @@ const ChatbotStudio = () => {
 
   const handleGenerate = async () => {
     if (!activeWebsite?.id || !token) return;
+    const canGenerate = crawlStatus === 'completed' || crawlStatus === 'cancelled' || (activeWebsite?.tokens_used && activeWebsite.tokens_used > 0);
+    if (!canGenerate && crawlStatus === 'pending') {
+      toast.error(`Cannot generate chatbot: website crawl has not been run yet. Please start a crawl first.`);
+      return;
+    }
     setGenerating(true);
     try {
       const res = await fetch('/api/chatbot/generate', {
@@ -460,6 +466,47 @@ const ChatbotStudio = () => {
         {/* ── Tab 1: Branding ─────────────────────────────────── */}
         {activeTab === 'branding' && (
           <div className="space-y-3.5">
+            {crawlStatus === 'pending' ? (
+              <div className="p-4 rounded-[14px] bg-amber-500/10 border border-amber-500/20 text-amber-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Crawl Required Before Chatbot Generation</h4>
+                    <p className="text-[11px] text-amber-400/90">
+                      Current status: <strong className="uppercase">{crawlStatus}</strong>. Websites that have not completed crawling cannot generate a chatbot.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  disabled
+                  className="px-4 py-2 rounded-[10px] bg-zinc-800 text-zinc-500 text-xs font-bold transition-all flex items-center gap-1.5 cursor-not-allowed shrink-0 border border-zinc-700 opacity-60"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Crawl Required</span>
+                </button>
+              </div>
+            ) : (
+              !config && (
+                <div className="p-4 rounded-[14px] bg-[#22C55E]/10 border border-[#22C55E]/20 text-white flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="w-5 h-5 text-[#22C55E] shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white">Chatbot Not Generated Yet</h4>
+                      <p className="text-[11px] text-zinc-400">Click Generate Chatbot to extract branding, set default colors, and create your script embed code.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="px-4 py-2 rounded-[10px] bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50 shadow-sm"
+                  >
+                    {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    <span>Generate Chatbot</span>
+                  </button>
+                </div>
+              )
+            )}
+
             {/* Site Name and Logo Display */}
             <div className="rounded-[18px] bg-[#131318] border border-[#27272A] p-4 sm:p-5 space-y-3">
               <h3 className="font-heading font-bold text-xs sm:text-sm text-white">
@@ -687,32 +734,70 @@ const ChatbotStudio = () => {
         {/* ── Tab 3: Embed Code ───────────────────────────────── */}
         {activeTab === 'embed' && (
           <div className="rounded-[18px] bg-[#131318] border border-[#27272A] p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-heading font-bold text-sm text-white">
-                Integration Embed Snippet
-              </h3>
-              <button
-                onClick={handleCopyCode}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#22C55E]/15 text-[#22C55E] hover:bg-[#22C55E]/25 border border-[#22C55E]/30 text-xs font-semibold transition-all cursor-pointer"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copied' : 'Copy Snippet'}
-              </button>
-            </div>
+            {!config?.embed_token ? (
+              <div className="py-8 px-6 rounded-[14px] bg-[#09090B] border border-[#27272A] text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                  {isCrawlCompleted ? <Sparkles className="w-6 h-6 text-[#22C55E]" /> : <Lock className="w-6 h-6 text-amber-400" />}
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-heading font-bold text-base text-white">
+                    {isCrawlCompleted ? 'Chatbot Script Not Generated Yet' : 'Crawl Required Before Script Generation'}
+                  </h4>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
+                    {isCrawlCompleted
+                      ? 'Your site content is indexed and ready. Click Generate Chatbot below to build your AI chatbot configuration and create your unique script embed snippet.'
+                      : `Current crawl status is "${crawlStatus}". Websites that have not completed crawling cannot generate a chatbot script.`}
+                  </p>
+                </div>
+                {isCrawlCompleted ? (
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="px-6 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#22C55E]/20 disabled:opacity-50"
+                  >
+                    {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    <span>Generate Chatbot</span>
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="px-6 py-2.5 rounded-[12px] bg-zinc-800 text-zinc-500 text-xs font-bold transition-all inline-flex items-center gap-2 border border-zinc-700 opacity-60 cursor-not-allowed mx-auto"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>Crawl Required</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading font-bold text-sm text-white">
+                    Integration Embed Snippet
+                  </h3>
+                  <button
+                    onClick={handleCopyCode}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#22C55E]/15 text-[#22C55E] hover:bg-[#22C55E]/25 border border-[#22C55E]/30 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Copied' : 'Copy Snippet'}
+                  </button>
+                </div>
 
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Add this single tag to your website template immediately before the closing{' '}
-              <code className="bg-[#09090B] px-1.5 py-0.5 rounded text-zinc-300 font-mono text-[11px]">&lt;/body&gt;</code>{' '}
-              or inside the{' '}
-              <code className="bg-[#09090B] px-1.5 py-0.5 rounded text-zinc-300 font-mono text-[11px]">&lt;head&gt;</code>{' '}
-              tag. The script autonomously attaches a Shadow DOM root that will not conflict with your CSS styles.
-            </p>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Add this single tag to your website template immediately before the closing{' '}
+                  <code className="bg-[#09090B] px-1.5 py-0.5 rounded text-zinc-300 font-mono text-[11px]">&lt;/body&gt;</code>{' '}
+                  or inside the{' '}
+                  <code className="bg-[#09090B] px-1.5 py-0.5 rounded text-zinc-300 font-mono text-[11px]">&lt;head&gt;</code>{' '}
+                  tag. The script autonomously attaches a Shadow DOM root that will not conflict with your CSS styles.
+                </p>
 
-            <div className="p-4 rounded-[14px] bg-[#09090B] border border-[#27272A] overflow-x-auto select-all">
-              <code className="text-[#22C55E] font-mono text-xs break-all">
-                {embedScriptTag}
-              </code>
-            </div>
+                <div className="p-4 rounded-[14px] bg-[#09090B] border border-[#27272A] overflow-x-auto select-all">
+                  <code className="text-[#22C55E] font-mono text-xs break-all">
+                    {embedScriptTag}
+                  </code>
+                </div>
+              </>
+            )}
           </div>
         )}
 

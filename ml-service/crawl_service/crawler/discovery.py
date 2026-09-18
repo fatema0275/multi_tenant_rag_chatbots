@@ -14,7 +14,7 @@ deduplicated, and capped at cfg.MAX_PAGES.
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse, unquote
 from typing import Optional
 
 import requests
@@ -179,9 +179,11 @@ def _bfs_discover(
         def _fetch_url(u: str):
             try:
                 resp = requests.get(u, headers=headers, timeout=5, allow_redirects=True)
+                u_path = urlparse(u).path.lower()
+                is_static_file = any(u_path.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js", ".json", ".xml"])
+                
                 if resp.status_code == 200:
                     ct = resp.headers.get("Content-Type", "").lower()
-                    u_path = urlparse(u).path.lower()
                     is_html = "text/html" in ct
                     is_pdf = "application/pdf" in ct or u_path.endswith(".pdf")
                     is_img = (
@@ -189,19 +191,36 @@ def _bfs_discover(
                         or any(u_path.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"])
                     )
                     if is_html or is_pdf or is_img:
-                        if job_id:
-                            try:
-                                increment_job_counter(job_id, "pages_found", 1)
-                            except Exception:
-                                pass
+                        if is_html:
+                            soup = BeautifulSoup(resp.text, "html.parser")
+                            if len(soup.find_all("a", href=True)) == 0:
+                                try:
+                                    from crawl_service.crawler.fetcher import fetch_page_with_playwright
+                                    pw_res = fetch_page_with_playwright(u)
+                                    if pw_res.ok and pw_res.html:
+                                        return u, pw_res.html
+                                except Exception as pw_err:
+                                    logger.debug("Discovery Playwright escalation skipped for %s: %s", u, pw_err)
                         # Return (url, html_str_or_empty)
                         return u, (resp.text if is_html else "")
+
+                elif resp.status_code == 404 and not is_static_file:
+                    # Possible client-side SPA route on static host without catch-all rewrites
+                    try:
+                        from crawl_service.crawler.fetcher import fetch_page_with_playwright
+                        pw_res = fetch_page_with_playwright(u)
+                        if pw_res.ok and pw_res.html and "404: NOT_FOUND" not in pw_res.html:
+                            return u, pw_res.html
+                    except Exception as pw_err:
+                        logger.debug("SPA 404 Playwright escalation failed for %s: %s", u, pw_err)
+
             except Exception:
                 pass
             return u, None
 
         level_new_found = 0
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        pool_workers = getattr(cfg, "MAX_WORKERS", 3)
+        with ThreadPoolExecutor(max_workers=pool_workers) as pool:
             futures = [pool.submit(_fetch_url, u) for u in candidates]
             for fut in as_completed(futures):
                 u, html_content = fut.result()
@@ -222,13 +241,6 @@ def _bfs_discover(
                                     next_level.add(norm_child)
                         except Exception:
                             pass
-
-
-        if job_id and level_new_found > 0:
-            try:
-                increment_job_counter(job_id, "pages_found", level_new_found)
-            except Exception:
-                pass
 
         current_level = next_level
         depth += 1
@@ -253,10 +265,11 @@ def _normalise(url: str) -> Optional[str]:
     if parsed.scheme not in ("http", "https"):
         return None
 
+    norm_path = unquote(parsed.path or "/")
     return urlunparse((
         parsed.scheme.lower(),
         parsed.netloc.lower(),
-        parsed.path or "/",
+        norm_path,
         parsed.params,
         parsed.query,
         "",  # no fragment

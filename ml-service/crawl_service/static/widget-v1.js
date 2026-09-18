@@ -558,10 +558,15 @@
           throw new Error('Too many requests, please wait.');
         }
         if (!res.ok) {
-          return res.json().then(function (errData) {
-            throw new Error(errData.error || 'Failed to get answer');
-          }).catch(function () {
-            throw new Error('Failed to get answer (HTTP ' + res.status + ')');
+          return res.text().then(function (rawText) {
+            var errMsg = 'Failed to get answer (HTTP ' + res.status + ')';
+            try {
+              var parsed = JSON.parse(rawText);
+              if (parsed && parsed.error) errMsg = parsed.error;
+            } catch (_) {
+              if (rawText && rawText.length < 200) errMsg = rawText;
+            }
+            throw new Error(errMsg);
           });
         }
         return res.json();
@@ -571,7 +576,7 @@
 
         var botMsgEl = document.createElement('div');
         botMsgEl.className = 'sm-msg sm-msg-bot';
-        botMsgEl.textContent = (data && data.response) || 'Query processing coming in Module 5.';
+        botMsgEl.textContent = (data && data.response) || 'No response generated.';
 
         // Render sources section if sources exist (Step 4 & Step 5)
         if (data && data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
@@ -588,41 +593,44 @@
 
             var samePage = isSamePage(src.page_url);
             var itemEl = document.createElement('div');
-            itemEl.className = 'sm-source-item';
+            itemEl.className = 'sm-source-item' + (samePage ? ' sm-source-same-page' : '');
 
             var linkEl = document.createElement('a');
             linkEl.className = 'sm-source-link';
             linkEl.href = src.page_url;
-            linkEl.title = src.page_title || src.page_url;
-            linkEl.textContent = samePage ? 'View source' : 'Go to source page';
-            if (samePage) {
-              linkEl.target = '_blank';
-              linkEl.rel = 'noopener noreferrer';
-            } else {
-              linkEl.target = '_self';
-            }
-
-            var btnEl = document.createElement('button');
-            btnEl.className = 'sm-source-btn';
-            btnEl.title = 'Show on page';
-            btnEl.setAttribute('aria-label', 'Show on page');
-            btnEl.innerHTML = `
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="8" stroke-width="2"/>
-                <circle cx="12" cy="12" r="3" stroke-width="2"/>
-                <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
-              </svg>
-              Show on page
-            `;
-
-            btnEl.addEventListener('click', function (e) {
-              e.preventDefault();
-              e.stopPropagation();
-              attemptVisualPointing(src, true);
-            });
+            var displayTitle = src.page_title || src.page_url;
+            linkEl.title = displayTitle;
+            linkEl.textContent = displayTitle;
+            linkEl.target = '_blank';
+            linkEl.rel = 'noopener noreferrer';
 
             itemEl.appendChild(linkEl);
-            itemEl.appendChild(btnEl);
+
+            // If it's on the same page, include the visual pointer highlight button!
+            // If it's on a different page, ONLY the link is required.
+            if (samePage) {
+              var btnEl = document.createElement('button');
+              btnEl.className = 'sm-source-btn';
+              btnEl.title = 'Highlight on page';
+              btnEl.setAttribute('aria-label', 'Highlight on page');
+              btnEl.innerHTML = `
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="8" stroke-width="2"/>
+                  <circle cx="12" cy="12" r="3" stroke-width="2"/>
+                  <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
+                </svg>
+                Highlight
+              `;
+
+              btnEl.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                attemptVisualPointing(src, true);
+              });
+
+              itemEl.appendChild(btnEl);
+            }
+
             sourcesContainer.appendChild(itemEl);
           });
 
@@ -632,9 +640,20 @@
         messagesEl.appendChild(botMsgEl);
         messagesEl.scrollTop = messagesEl.scrollHeight;
 
-        // Auto-attempt visual pointing on top retrieved source (Step 4)
-        if (data && data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
-          attemptVisualPointing(data.sources[0], false);
+        // Auto-attempt visual pointing only on the first source that is on the SAME page
+        if (data && data.sources && Array.isArray(data.sources)) {
+          var firstSamePageSource = null;
+          for (var k = 0; k < data.sources.length; k++) {
+            if (data.sources[k] && isSamePage(data.sources[k].page_url)) {
+              firstSamePageSource = data.sources[k];
+              break;
+            }
+          }
+          if (firstSamePageSource) {
+            setTimeout(function () {
+              attemptVisualPointing(firstSamePageSource, false);
+            }, 300);
+          }
         }
       })
       .catch(function (err) {
@@ -672,42 +691,60 @@
   }
 
   function isDomainAllowed() {
-    if (visualPointingSessionDisabled) return false;
     var currentHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
+    if (currentHost === 'localhost' || currentHost === '127.0.0.1') return true;
     var registered = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
-    if (!registered || !currentHost) {
-      visualPointingSessionDisabled = true;
-      return false;
-    }
-    // Allow exact match or subdomain match
-    if (currentHost !== registered && !currentHost.endsWith('.' + registered)) {
-      visualPointingSessionDisabled = true;
-      return false;
-    }
-    return true;
+    if (!registered || !currentHost) return false;
+    return currentHost === registered || currentHost.endsWith('.' + registered);
   }
 
-  function normalizeUrl(url) {
-    if (!url) return '';
+  function getPath(urlStr) {
     try {
-      var u = new URL(url, window.location.origin);
-      return (u.origin + u.pathname).replace(/\/+$/, '').toLowerCase();
+      var u = new URL(urlStr, window.location.origin);
+      return u.pathname.replace(/\/+$/, '').toLowerCase() || '/';
     } catch (e) {
-      return (url || '').split('?')[0].split('#')[0].replace(/\/+$/, '').toLowerCase();
+      return (urlStr || '').split('?')[0].split('#')[0].replace(/\/+$/, '').toLowerCase() || '/';
+    }
+  }
+
+  function getHost(urlStr) {
+    try {
+      var u = new URL(urlStr, window.location.origin);
+      return u.hostname.toLowerCase().replace(/^www\./, '');
+    } catch (e) {
+      return '';
     }
   }
 
   function isSamePage(sourceUrl) {
     if (!sourceUrl) return false;
-    var currentNorm = normalizeUrl(window.location.href);
-    var sourceNorm = normalizeUrl(sourceUrl);
-    return Boolean(currentNorm && sourceNorm && currentNorm === sourceNorm);
+    var sUrl = String(sourceUrl).trim();
+    if (sUrl.toLowerCase().endsWith('.pdf') || sUrl.toLowerCase().includes('.pdf?')) {
+      return false; // PDF files are separate documents, not current HTML page
+    }
+
+    var currentHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
+    var registeredHost = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
+    var srcHost = getHost(sUrl);
+
+    var hostMatches = (
+      currentHost === 'localhost' ||
+      currentHost === '127.0.0.1' ||
+      srcHost === currentHost ||
+      (registeredHost && (srcHost === registeredHost || srcHost.endsWith('.' + registeredHost)))
+    );
+
+    if (!hostMatches) return false;
+
+    var curPath = getPath(window.location.href);
+    var srcPath = getPath(sUrl);
+    return curPath === srcPath;
   }
 
   function attemptVisualPointing(source, isManual) {
     // Entire visual pointing logic wrapped in try-catch — silently aborts on any error
     try {
-      // 1. Hostname check vs registered domain
+      // 1. Domain allowed check
       if (!isDomainAllowed()) {
         return;
       }
@@ -716,10 +753,10 @@
         return;
       }
 
-      // 2. SPA and wrong-page handling (Step 5)
+      // 2. SPA and same-page check
       if (!isSamePage(source.page_url)) {
         if (isManual) {
-          // If manually triggered for a different page, navigate to where content lives in same tab
+          // If manually clicked on different page link, navigate in same tab
           window.location.href = source.page_url;
         }
         return;
@@ -739,100 +776,126 @@
       }
 
       if (!snippet && source.text_snippet) {
-        snippet = source.text_snippet;
+        var cleanSnippet = source.text_snippet.replace(/\n+/g, ' ').trim();
+        snippet = cleanSnippet.slice(0, 80);
       }
 
       if (!snippet) {
-        logDevOnly('visual-point-failed');
+        logDevOnly('visual-point-failed: no snippet');
         return;
       }
 
-      var snippetLower = snippet.trim().toLowerCase();
+      var snippetLower = snippet.trim().toLowerCase().replace(/[.,:;!?]+$/, '').trim();
       if (!snippetLower) {
-        logDevOnly('visual-point-failed');
+        logDevOnly('visual-point-failed: empty snippet');
         return;
       }
 
-      // 4. Walk document.querySelectorAll('p, li, h2, h3, h4, td, div') on host document (outside shadow root)
-      var candidates = document.querySelectorAll('p, li, h2, h3, h4, td, div');
+      // 4. Search outside shadow root, prioritizing innermost / most specific element
+      var candidates = document.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, span, td, th, blockquote, div');
       var matchedEl = null;
+      var shortestLen = Infinity;
 
       for (var i = 0; i < candidates.length; i++) {
         var el = candidates[i];
         if (containerEl && containerEl.contains(el)) continue;
         var text = (el.innerText || el.textContent || '').toLowerCase();
         if (text.includes(snippetLower)) {
-          matchedEl = el;
-          break;
-        }
-      }
-
-      // Sub-sentence fallback (first 40 chars) if full 80-char sentence was split across nested tags
-      if (!matchedEl && snippetLower.length > 40) {
-        var shorter = snippetLower.slice(0, 40);
-        for (var j = 0; j < candidates.length; j++) {
-          var cel = candidates[j];
-          if (containerEl && containerEl.contains(cel)) continue;
-          if ((cel.innerText || cel.textContent || '').toLowerCase().includes(shorter)) {
-            matchedEl = cel;
-            break;
+          if (text.length < shortestLen) {
+            matchedEl = el;
+            shortestLen = text.length;
           }
         }
       }
 
-      // 5. If no element matched, log 'visual-point-failed' in dev mode only and move on
+      // Sub-sentence fallback (first 35 chars) if full sentence was split across nested tags
+      if (!matchedEl && snippetLower.length > 35) {
+        var shorter = snippetLower.slice(0, 35).replace(/[.,:;!?]+$/, '').trim();
+        for (var j = 0; j < candidates.length; j++) {
+          var cel = candidates[j];
+          if (containerEl && containerEl.contains(cel)) continue;
+          var cText = (cel.innerText || cel.textContent || '').toLowerCase();
+          if (cText.includes(shorter)) {
+            if (cText.length < shortestLen) {
+              matchedEl = cel;
+              shortestLen = cText.length;
+            }
+          }
+        }
+      }
+
+      // 5. If no element matched, log in dev mode only
       if (!matchedEl) {
-        logDevOnly('visual-point-failed');
+        logDevOnly('visual-point-failed: element not found on page');
         return;
       }
 
-      // 6. Highlight style injection (Step 4 & Step 6)
+      // 6. Highlight injection with direct styles and animated glow
+      var origOutline = matchedEl.style.outline;
+      var origOutlineOffset = matchedEl.style.outlineOffset;
+      var origBg = matchedEl.style.backgroundColor;
+      var origBoxShadow = matchedEl.style.boxShadow;
+      var origTransition = matchedEl.style.transition;
+      var origBorderRadius = matchedEl.style.borderRadius;
+
       var styleId = 'sitemind-highlight-style';
       var existingStyle = document.getElementById(styleId);
       if (!existingStyle) {
         var styleEl = document.createElement('style');
         styleEl.id = styleId;
         styleEl.textContent = `
-          @keyframes sitemindHighlightPulse {
+          @keyframes sitemindGlow {
             0% {
-              background-color: #FFF176 !important;
-              background-color: rgba(255, 235, 59, 0.6) !important;
-              box-shadow: 0 0 10px rgba(255, 235, 59, 0.7) !important;
+              outline-color: #2563eb;
+              background-color: rgba(254, 240, 138, 0.85);
+              box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8);
+            }
+            50% {
+              outline-color: #f59e0b;
+              background-color: rgba(254, 240, 138, 0.55);
+              box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 0 12px rgba(245, 158, 11, 0.5);
             }
             100% {
-              background-color: transparent !important;
-              background-color: rgba(255, 235, 59, 0) !important;
-              box-shadow: none !important;
+              outline-color: #2563eb;
+              background-color: rgba(254, 240, 138, 0.85);
+              box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8);
             }
           }
-          .sitemind-highlight-pulse {
-            animation: sitemindHighlightPulse 3s ease-out forwards !important;
-            border-radius: 4px !important;
+          .sitemind-highlight-active {
+            animation: sitemindGlow 1.4s infinite ease-in-out !important;
           }
         `;
         document.head.appendChild(styleEl);
       }
 
-      // Add highlight class and scroll into view smoothly
-      matchedEl.classList.add('sitemind-highlight-pulse');
+      // Set visible initial highlight inline styles directly so no CSS rule can override it
+      matchedEl.style.transition = 'all 0.3s ease';
+      matchedEl.style.borderRadius = '6px';
+      matchedEl.style.outline = '3px solid #2563eb';
+      matchedEl.style.outlineOffset = '4px';
+      matchedEl.style.backgroundColor = 'rgba(254, 240, 138, 0.85)';
+      matchedEl.style.boxShadow = '0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8)';
+      matchedEl.classList.add('sitemind-highlight-active');
+
+      // Scroll smoothly into center view
       matchedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-      // Remove class after 3500ms
+      // After 4500ms, cleanly restore original element styles
       setTimeout(function () {
         try {
-          matchedEl.classList.remove('sitemind-highlight-pulse');
+          matchedEl.classList.remove('sitemind-highlight-active');
+          matchedEl.style.outline = origOutline;
+          matchedEl.style.outlineOffset = origOutlineOffset;
+          matchedEl.style.backgroundColor = origBg;
+          matchedEl.style.boxShadow = origBoxShadow;
+          matchedEl.style.borderRadius = origBorderRadius;
+          setTimeout(function () {
+            try {
+              matchedEl.style.transition = origTransition;
+            } catch (_) {}
+          }, 350);
         } catch (_) {}
-      }, 3500);
-
-      // Clean up injected style tag from document.head after 4000ms (Step 6)
-      setTimeout(function () {
-        try {
-          var tag = document.getElementById(styleId);
-          if (tag && tag.parentNode) {
-            tag.parentNode.removeChild(tag);
-          }
-        } catch (_) {}
-      }, 4000);
+      }, 4500);
 
     } catch (err) {
       // Silently abort visual pointing on any error

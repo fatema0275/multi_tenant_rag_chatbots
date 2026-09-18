@@ -11,6 +11,7 @@ import {
 import { useActiveWebsite } from '../context/ActiveWebsiteContext';
 import SkeletonBlock from '../components/ui/SkeletonBlock';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import CrawlStatusPanel from '../components/ui/CrawlStatusPanel';
 import toast from 'react-hot-toast';
 import {
   Globe,
@@ -31,6 +32,7 @@ import {
   Edit2,
   X,
   Loader2,
+  Activity,
 } from 'lucide-react';
 
 const formatTimestamp = (iso) =>
@@ -102,6 +104,13 @@ const MyWebsites = () => {
 
   // Crawling loading state per site
   const [crawlingSiteIds, setCrawlingSiteIds] = useState(new Set());
+  const [selectedLogSiteId, setSelectedLogSiteId] = useState(null);
+
+  const handleViewLogs = (site) => {
+    setSelectedLogSiteId(site.id);
+    const el = document.getElementById('crawl-logs-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const filteredWebsites = useMemo(() => {
     return websites.filter((site) => {
@@ -366,14 +375,14 @@ const MyWebsites = () => {
                     </div>
                   </div>
 
-                  {/* Bottom: 4 Quick Action Buttons */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-[#27272A]/70">
+                  {/* Bottom: Quick Action Buttons */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-[#27272A]/70">
                     {/* 1. Crawl Now */}
                     <button
                       onClick={() => handleCrawlNow(site)}
                       disabled={isCrawling}
                       title="Trigger indexing crawl now"
-                      className="h-9 px-2.5 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {isCrawling ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -383,34 +392,44 @@ const MyWebsites = () => {
                       <span>Crawl Now</span>
                     </button>
 
-                    {/* 2. Open Studio */}
+                    {/* 2. Crawl Logs */}
+                    <button
+                      onClick={() => handleViewLogs(site)}
+                      title="View live & historical crawl logs"
+                      className="h-9 px-2 rounded-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>Crawl Logs</span>
+                    </button>
+
+                    {/* 3. Open Studio */}
                     <button
                       onClick={() => handleOpenStudio(site)}
                       title="Open in Chatbot Studio"
-                      className="h-9 px-2.5 rounded-[10px] bg-[#22C55E]/15 hover:bg-[#22C55E]/25 text-[#22C55E] border border-[#22C55E]/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="h-9 px-2 rounded-[10px] bg-[#22C55E]/15 hover:bg-[#22C55E]/25 text-[#22C55E] border border-[#22C55E]/30 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <Bot className="w-3.5 h-3.5" />
-                      <span>Open Studio</span>
+                      <span>Studio</span>
                     </button>
 
-                    {/* 3. View Analytics */}
+                    {/* 4. View Analytics */}
                     <button
                       onClick={() => handleOpenAnalytics(site)}
                       title="View query & token analytics"
-                      className="h-9 px-2.5 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
                       <span>Analytics</span>
                     </button>
 
-                    {/* 4. Settings */}
+                    {/* 5. Settings */}
                     <button
                       onClick={() => {
                         setEditSite(site);
                         setEditDomain(site.domain);
                       }}
                       title="Edit website domain or configuration"
-                      className="h-9 px-2.5 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <SettingsIcon className="w-3.5 h-3.5 text-zinc-400" />
                       <span>Settings</span>
@@ -422,6 +441,11 @@ const MyWebsites = () => {
           </AnimatePresence>
         </div>
       )}
+
+      {/* ── Live Crawl Logs & Jobs Panel ───────────────────────── */}
+      <div id="crawl-logs-section" className="pt-2">
+        <CrawlStatusPanel activeWebsiteId={selectedLogSiteId} />
+      </div>
 
       {/* ── Register Website Modal ────────────────────────────── */}
       <AnimatePresence>

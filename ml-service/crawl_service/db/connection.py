@@ -92,13 +92,24 @@ def _get_psycopg2_pool():
     global _psycopg2_pool
     if _psycopg2_pool is None or _psycopg2_pool.closed:
         _psycopg2_pool = pg_pool.ThreadedConnectionPool(
-            minconn=2,
+            minconn=1,
             maxconn=10,
             dsn=cfg.DATABASE_URL,
             cursor_factory=RealDictCursor,
             sslmode="require",
         )
     return _psycopg2_pool
+
+
+def _is_conn_alive(conn) -> bool:
+    if conn is None or getattr(conn, "closed", 1) != 0:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
 
 
 def _connect_pg8000():
@@ -122,19 +133,65 @@ def _connect_pg8000():
 def get_db():
     """
     Context manager yielding a Postgres connection (psycopg2 or pg8000).
-    Automatically commits on clean exit, rolls back on exception, and closes/returns connection.
+    Resilient to network changes, idle drops, and Supabase pooler timeouts.
     """
     if USE_PSYCOPG2:
         pool = _get_psycopg2_pool()
-        conn = pool.getconn()
+        conn = None
+
+        # Attempt to get an alive connection from the pool
+        for _ in range(3):
+            try:
+                candidate = pool.getconn()
+                if _is_conn_alive(candidate):
+                    conn = candidate
+                    break
+                else:
+                    try:
+                        pool.putconn(candidate, close=True)
+                    except Exception:
+                        pass
+            except Exception:
+                break
+
+        # If pool had dead connections (e.g. WiFi network changed), rebuild pool
+        if conn is None:
+            global _psycopg2_pool
+            try:
+                if _psycopg2_pool and not _psycopg2_pool.closed:
+                    _psycopg2_pool.closeall()
+            except Exception:
+                pass
+            _psycopg2_pool = None
+            pool = _get_psycopg2_pool()
+            conn = pool.getconn()
+
         try:
             yield conn
-            conn.commit()
+            if not getattr(conn, "closed", 1):
+                conn.commit()
         except Exception:
-            conn.rollback()
+            try:
+                if not getattr(conn, "closed", 1):
+                    conn.rollback()
+            except Exception:
+                pass
+            if getattr(conn, "closed", 1) != 0:
+                try:
+                    pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = None
             raise
         finally:
-            pool.putconn(conn)
+            if conn:
+                try:
+                    if getattr(conn, "closed", 1) != 0:
+                        pool.putconn(conn, close=True)
+                    else:
+                        pool.putconn(conn)
+                except Exception:
+                    pass
     else:
         conn = _connect_pg8000()
         try:

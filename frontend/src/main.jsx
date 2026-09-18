@@ -7,9 +7,10 @@ import App from './App.jsx';
 import Toast from './components/ui/Toast';
 import './index.css';
 
-const googleClientId =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-  '257933383201-pc78sq0fh87al722a4fvtvsb7acku39d.apps.googleusercontent.com';
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+if (import.meta.env.DEV) {
+  console.info('[SiteMind Auth] Active VITE_GOOGLE_CLIENT_ID:', googleClientId ? `${googleClientId.slice(0, 16)}...` : '(not configured)');
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -41,22 +42,20 @@ class ErrorBoundary extends React.Component {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <Provider store={store}>
-        {googleClientId ? (
-          <GoogleOAuthProvider clientId={googleClientId}>
-            <App />
-            <Toast />
-          </GoogleOAuthProvider>
-        ) : (
-          <>
-            <App />
-            <Toast />
-          </>
-        )}
-      </Provider>
-    </ErrorBoundary>
-  </React.StrictMode>
+  <ErrorBoundary>
+    <Provider store={store}>
+      {googleClientId ? (
+        <GoogleOAuthProvider clientId={googleClientId}>
+          <App />
+          <Toast />
+        </GoogleOAuthProvider>
+      ) : (
+        <>
+          <App />
+          <Toast />
+        </>
+      )}
+    </Provider>
+  </ErrorBoundary>
 );
 

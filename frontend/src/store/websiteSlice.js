@@ -97,11 +97,14 @@ export const deleteWebsite = createAsyncThunk(
  */
 export const triggerCrawl = createAsyncThunk(
   'websites/triggerCrawl',
-  async (websiteId, { getState, rejectWithValue }) => {
+  async (arg, { getState, rejectWithValue }) => {
+    const websiteId = typeof arg === 'object' && arg !== null ? arg.websiteId : arg;
+    const force = typeof arg === 'object' && arg !== null ? Boolean(arg.force) : false;
     try {
       const response = await fetch(`/api/websites/${websiteId}/crawl`, {
         method: 'POST',
         headers: getAuthHeaders(getState),
+        body: JSON.stringify({ force }),
       });
 
       const data = await response.json();

@@ -632,7 +632,7 @@ const Signup = () => {
                     text={mode === 'signup' ? 'signup_with' : 'continue_with'}
                     size="large"
                     shape="rectangular"
-                    width="100%"
+                    width="350"
                   />
                 </div>
               </div>

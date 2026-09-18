@@ -35,6 +35,7 @@ const StartCrawlCard = () => {
 
   const [selectedId, setSelectedId] = useState('');
   const [crawling, setCrawling] = useState(false);
+  const [forceCrawl, setForceCrawl] = useState(false);
 
   // Unique id for label/select association (React 18 useId)
   const selectId = useId();
@@ -56,7 +57,7 @@ const StartCrawlCard = () => {
     if (!canSubmit) return;
 
     setCrawling(true);
-    const result = await dispatch(triggerCrawl(Number(selectedId)));
+    const result = await dispatch(triggerCrawl({ websiteId: Number(selectedId), force: forceCrawl }));
     setCrawling(false);
 
     if (triggerCrawl.fulfilled.match(result)) {
@@ -65,6 +66,7 @@ const StartCrawlCard = () => {
       );
       // Reset dropdown so the user doesn't accidentally double-submit
       setSelectedId('');
+      setForceCrawl(false);
     } else {
       toast.error(result.payload || 'Failed to start crawl. Check the activity log.');
     }
@@ -158,11 +160,29 @@ const StartCrawlCard = () => {
             ) : (
               <>
                 <Play className="w-4 h-4" />
-                Start Crawl
+                {forceCrawl ? 'Force Re-crawl' : 'Start Crawl'}
               </>
             )}
           </button>
         </div>
+
+        {/* Force re-crawl toggle checkbox */}
+        {selectedId && isVerified && (
+          <div className="flex items-center gap-2 mt-1 ml-1">
+            <label className="flex items-center gap-2 text-xs text-txt-secondary-light dark:text-txt-secondary-dark cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={forceCrawl}
+                onChange={(e) => setForceCrawl(e.target.checked)}
+                disabled={crawling}
+                className="rounded border-zinc-300 dark:border-zinc-700 text-accent focus:ring-accent w-3.5 h-3.5"
+              />
+              <span>
+                <strong>Force full re-crawl:</strong> wipe previous cache and re-index all pages from scratch.
+              </span>
+            </label>
+          </div>
+        )}
 
         {/* Unverified warning hint */}
         <AnimatePresence>

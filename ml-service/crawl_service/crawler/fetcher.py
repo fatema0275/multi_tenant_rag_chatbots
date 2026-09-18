@@ -197,8 +197,42 @@ def fetch_page_with_playwright(url: str) -> FetchResult:
             page = context.new_page()
 
             try:
-                page.goto(url, timeout=cfg.PAGE_TIMEOUT * 1000, wait_until="networkidle")
+                resp = page.goto(url, timeout=cfg.PAGE_TIMEOUT * 1000, wait_until="domcontentloaded")
+                try:
+                    page.wait_for_timeout(1500)
+                except Exception:
+                    pass
                 html = page.content()
+
+                # Check if server returned 404 on direct path request for an SPA route on static host
+                status_code = resp.status if resp else 200
+                is_spa_404 = status_code == 404 or "404" in (page.title() or "")
+                if is_spa_404:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}/"
+                    path = parsed.path
+                    if path and path != "/":
+                        logger.info("Direct route returned 404 for %s — attempting client-side navigation via %s", url, base_url)
+                        page.goto(base_url, timeout=cfg.PAGE_TIMEOUT * 1000, wait_until="domcontentloaded")
+                        try:
+                            page.wait_for_timeout(1000)
+                        except Exception:
+                            pass
+                        locator = page.locator(f'a[href="{path}"], a[href="{path}/"], a[href="{url}"], a[href="{path.lstrip("/")}"]')
+                        if locator.count() > 0:
+                            locator.first.click()
+                        else:
+                            page.evaluate(f"window.history.pushState(null, '', '{path}'); window.dispatchEvent(new PopStateEvent('popstate'));")
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=3000)
+                        except Exception:
+                            pass
+                        try:
+                            page.wait_for_timeout(2000)
+                        except Exception:
+                            pass
+                        html = page.content()
             except PWTimeout:
                 logger.warning("Playwright timeout for %s", url)
                 return FetchResult(url=url, error="timeout")

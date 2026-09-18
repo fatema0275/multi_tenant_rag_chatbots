@@ -45,6 +45,8 @@ def trigger_crawl():
     domain = body.get("domain")
     user_id = body.get("user_id")
 
+    force = bool(body.get("force", False))
+
     if not website_id or not domain:
         return jsonify({"error": "website_id and domain are required"}), 400
 
@@ -83,7 +85,6 @@ def trigger_crawl():
             )
         }), 422
 
-    # --- STEP 6 DEDUPLICATION LOGIC ---
     # Check if a row already exists in `sites` for this domain
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -96,28 +97,6 @@ def trigger_crawl():
                 (domain_clean,),
             )
             site_row = cur.fetchone()
-
-            if site_row and site_row["crawl_status"] == "completed":
-                site_id = str(site_row["id"])
-                # Link user's websites row to existing sites.id
-                cur.execute(
-                    """
-                    UPDATE websites
-                    SET    site_id = %s
-                    WHERE  id = %s
-                    """,
-                    (site_id, website_id),
-                )
-                logger.info(
-                    "Domain '%s' already crawled (site_id=%s). Linked website_id=%s directly.",
-                    domain_clean, site_id, website_id
-                )
-                return jsonify({
-                    "job_id": None,
-                    "status": "completed",
-                    "site_id": site_id,
-                    "message": f"Domain '{db_domain}' is already crawled. Linked to shared site record.",
-                }), 200
 
             if site_row:
                 site_id = str(site_row["id"])
@@ -149,6 +128,18 @@ def trigger_crawl():
                 """,
                 (site_id, website_id),
             )
+
+            # If force=True, wipe previous pages & document_chunks so full fresh crawl runs
+            if force:
+                logger.info("Force re-crawl requested for site_id=%s website_id=%s. Clearing existing chunks & pages.", site_id, website_id)
+                cur.execute(
+                    "DELETE FROM document_chunks WHERE site_id = %s OR website_id = %s",
+                    (site_id, website_id),
+                )
+                cur.execute(
+                    "DELETE FROM pages WHERE site_id = %s OR website_id = %s",
+                    (site_id, website_id),
+                )
 
     # --- Prevent duplicate concurrent jobs ---
     active_job = get_active_job_for_website(website_id)
@@ -193,6 +184,24 @@ def stop_crawl_job(job_id: int):
     """Manually stop/cancel an active crawl job."""
     from crawl_service.tasks.crawl_task import cancel_job
     cancel_job(job_id)
+
+    # Immediately ensure site crawl_status is transitioned out of 'running'
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT website_id FROM crawl_jobs WHERE id = %s", (job_id,))
+                row = cur.fetchone()
+                if row:
+                    cur.execute("SELECT site_id FROM websites WHERE id = %s", (row["website_id"],))
+                    w_row = cur.fetchone()
+                    if w_row and w_row["site_id"]:
+                        cur.execute(
+                            "UPDATE sites SET crawl_status = 'completed', last_crawled_at = NOW(), updated_at = NOW() WHERE id = %s",
+                            (w_row["site_id"],)
+                        )
+    except Exception as e:
+        logger.warning("Error updating site status on stop_crawl_job: %s", e)
+
     return jsonify({
         "job_id": job_id,
         "status": "cancelled",

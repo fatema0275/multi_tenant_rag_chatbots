@@ -1,7 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
-const { Website, VerificationLog, Site } = require('../models');
+const { Op } = require('sequelize');
+const { Website, VerificationLog, Site, sequelize } = require('../models');
 const dns = require('dns').promises;
 
 /**
@@ -223,6 +224,44 @@ const deleteWebsite = async (userId, websiteId) => {
     error.statusCode = 403;
     throw error;
   }
+
+  const siteId = website.site_id;
+
+  // Check if any OTHER user has this same site_id registered
+  let otherWebsitesCount = 0;
+  if (siteId) {
+    otherWebsitesCount = await Website.count({
+      where: {
+        site_id: siteId,
+        id: { [Op.ne]: websiteId }
+      }
+    });
+  }
+
+  if (otherWebsitesCount === 0 && siteId) {
+    // No other user shares this site: clean up all site data from Supabase
+    try {
+      await sequelize.query('DELETE FROM document_chunks WHERE site_id = :siteId OR website_id = :websiteId', { replacements: { siteId, websiteId } });
+      await sequelize.query('DELETE FROM pages WHERE site_id = :siteId OR website_id = :websiteId', { replacements: { siteId, websiteId } });
+      await sequelize.query('DELETE FROM crawl_logs WHERE crawl_job_id IN (SELECT id FROM crawl_jobs WHERE website_id = :websiteId)', { replacements: { websiteId } });
+      await sequelize.query('DELETE FROM crawl_jobs WHERE website_id = :websiteId', { replacements: { websiteId } });
+      await sequelize.query('DELETE FROM sites WHERE id = :siteId', { replacements: { siteId } });
+    } catch (cleanErr) {
+      console.warn(`[WebsiteService] Warning cleaning up site data for siteId=${siteId}:`, cleanErr.message);
+    }
+  } else {
+    // Other users share this domain: only remove this user's jobs and logs
+    try {
+      await sequelize.query('DELETE FROM crawl_logs WHERE crawl_job_id IN (SELECT id FROM crawl_jobs WHERE website_id = :websiteId)', { replacements: { websiteId } });
+      await sequelize.query('DELETE FROM crawl_jobs WHERE website_id = :websiteId', { replacements: { websiteId } });
+    } catch (_) {}
+  }
+
+  // Always remove chatbot_configs and verification_logs for this website
+  try {
+    await sequelize.query('DELETE FROM chatbot_configs WHERE website_id = :websiteId', { replacements: { websiteId } });
+    await sequelize.query('DELETE FROM verification_logs WHERE website_id = :websiteId', { replacements: { websiteId } });
+  } catch (_) {}
 
   await website.destroy();
   return { success: true, id: websiteId };

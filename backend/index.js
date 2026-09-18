@@ -1,4 +1,5 @@
 'use strict';
+// Reload env: 2026-09-18
 
 const express = require('express');
 const cors = require('cors');
@@ -30,7 +31,7 @@ app.get('/static/widget-v1.js', async (req, res) => {
     if (!response.ok) return res.status(response.status).end();
     const content = await response.text();
     res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.status(200).send(content);
   } catch (err) {
     return res.status(502).json({ error: `Python bridge unreachable: ${err.message}` });

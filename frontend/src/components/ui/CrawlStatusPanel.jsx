@@ -61,17 +61,24 @@ const CountPill = ({ value, label, color = 'text-txt-secondary-light dark:text-t
   </div>
 );
 
-const CrawlStatusPanel = () => {
+const CrawlStatusPanel = ({ activeWebsiteId }) => {
   const dispatch = useDispatch();
   const { websites } = useSelector((s) => s.websites);
   const token = useSelector((s) => s.auth.token);
 
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(activeWebsiteId ? String(activeWebsiteId) : '');
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState(null);
   const [lastFetched, setLastFetched] = useState(null);
+
+  React.useEffect(() => {
+    if (activeWebsiteId) {
+      setSelectedId(String(activeWebsiteId));
+      fetchJobs(activeWebsiteId);
+    }
+  }, [activeWebsiteId]);
 
   const fetchJobs = useCallback(async (websiteId) => {
     if (!websiteId) return;

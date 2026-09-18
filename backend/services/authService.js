@@ -104,7 +104,8 @@ const googleAuth = async ({ idToken }) => {
     });
     payload = ticket.getPayload();
   } catch (err) {
-    const error = new Error('Invalid or expired Google authentication token');
+    console.error('[Google Auth Error]: Verification failed -', err.message);
+    const error = new Error(`Invalid or expired Google authentication token: ${err.message}`);
     error.statusCode = 401;
     throw error;
   }

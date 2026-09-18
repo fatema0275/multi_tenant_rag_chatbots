@@ -109,6 +109,22 @@ def increment_job_counter(job_id: int, counter: str, amount: int = 1) -> None:
             )
 
 
+def set_job_counter(job_id: int, counter: str, value: int) -> None:
+    """
+    Set the exact value of a counter on crawl_jobs.
+    """
+    allowed = {"pages_found", "pages_crawled", "pages_failed", "pages_skipped"}
+    if counter not in allowed:
+        raise ValueError(f"Unknown counter: {counter!r}. Must be one of {allowed}")
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE crawl_jobs SET {counter} = %s WHERE id = %s",
+                (value, job_id),
+            )
+
+
 def mark_job_completed(job_id: int) -> None:
     """Transition status running → completed."""
     with get_db() as conn:

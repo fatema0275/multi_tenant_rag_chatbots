@@ -104,10 +104,29 @@ def generate_chatbot():
         return jsonify({"error": err_msg}), 403
 
     crawl_status = website.get("crawl_status")
+    site_id = website.get("site_id")
+
+    # If not completed, verify if site already has indexed chunks/pages in database
     if crawl_status != "completed":
-        return jsonify({
-            "error": f"Cannot generate chatbot configuration for uncompleted site (current crawl status: {crawl_status or 'pending'}). Knowledge base crawling must complete first."
-        }), 422
+        chunk_count = 0
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM document_chunks WHERE site_id = %s OR website_id = %s",
+                    (site_id, website_id),
+                )
+                r = cur.fetchone()
+                if r:
+                    chunk_count = r["cnt"]
+        if chunk_count == 0:
+            return jsonify({
+                "error": f"Cannot generate chatbot configuration: no knowledge base content has been indexed yet (current status: {crawl_status or 'pending'}). Please run a crawl first."
+            }), 422
+        # Auto-heal crawl_status on sites table
+        if site_id:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE sites SET crawl_status = 'completed', updated_at = NOW() WHERE id = %s", (site_id,))
 
     domain = website["domain"]
     
@@ -195,9 +214,11 @@ def get_chatbot_config(website_id: int):
             row = cur.fetchone()
 
     if not row:
-        return jsonify({"error": "Chatbot configuration not found for this website"}), 404
+        return jsonify({"exists": False, "message": "Chatbot configuration not found for this website"}), 200
 
-    return jsonify(dict(row)), 200
+    config_dict = dict(row)
+    config_dict["exists"] = True
+    return jsonify(config_dict), 200
 
 
 @chatbot_bp.patch("/api/chatbot/config/<int:website_id>")

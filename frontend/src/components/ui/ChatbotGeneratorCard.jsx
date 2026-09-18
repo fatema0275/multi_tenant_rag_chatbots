@@ -21,7 +21,7 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
   const [textColor, setTextColor] = useState('#111111');
 
   const crawlStatus = website?.site?.crawl_status || website?.crawl_status || 'pending';
-  const isCrawlCompleted = crawlStatus === 'completed';
+  const isCrawlCompleted = crawlStatus === 'completed' || crawlStatus === 'cancelled' || Boolean(website?.tokens_used);
 
   useEffect(() => {
     if (!website?.id || !token) return;
@@ -32,12 +32,15 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && !data.error) {
+        if (data && !data.error && data.exists !== false) {
           setConfig(data);
           setThemeColor(data.theme_color || '#22C55E');
           setBackgroundColor(data.background_color || '#ffffff');
           setTextColor(data.text_color || '#111111');
           if (onConfigChange) onConfigChange(data);
+        } else {
+          setConfig(null);
+          if (onConfigChange) onConfigChange(null);
         }
       })
       .catch(() => {})

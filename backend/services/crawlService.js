@@ -14,9 +14,10 @@ const BRIDGE_URL = process.env.CRAWL_BRIDGE_URL || null;
  *
  * @param {number} userId     - Authenticated user ID (from JWT middleware).
  * @param {number} websiteId  - ID of the website to crawl.
+ * @param {boolean} [force]   - Whether to force a full clean re-crawl.
  * @returns {{ jobId: string|null, status: string, message: string }}
  */
-const triggerCrawl = async (userId, websiteId) => {
+const triggerCrawl = async (userId, websiteId, force = false) => {
   // 1. Fetch the website and enforce RLS (user_id must match)
   const website = await Website.findOne({
     where: { id: websiteId, user_id: userId },
@@ -53,6 +54,7 @@ const triggerCrawl = async (userId, websiteId) => {
             website_id: websiteId,
             domain: website.domain,
             user_id: userId,
+            force,
           }),
           signal: AbortSignal.timeout(10_000),
         });
@@ -150,6 +152,15 @@ const stopCrawl = async (userId, websiteId) => {
     `UPDATE crawl_jobs SET status = 'cancelled', completed_at = NOW() WHERE id = :jobId`,
     { replacements: { jobId } }
   );
+
+  // Update sites.crawl_status so it is never stuck in 'running'
+  if (website.site_id) {
+    const nextStatus = pageCount > 0 ? 'completed' : 'cancelled';
+    await sequelize.query(
+      `UPDATE sites SET crawl_status = :status, last_crawled_at = NOW(), updated_at = NOW() WHERE id = :siteId`,
+      { replacements: { status: nextStatus, siteId: website.site_id } }
+    );
+  }
 
   try {
     await sequelize.query(

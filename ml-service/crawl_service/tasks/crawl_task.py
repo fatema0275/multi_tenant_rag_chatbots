@@ -34,6 +34,7 @@ from crawl_service.crawler.robots import get_crawl_delay, is_allowed
 from crawl_service.db.crawl_jobs import (
     get_crawl_job,
     increment_job_counter,
+    set_job_counter,
     mark_job_completed,
     mark_job_failed,
     mark_job_running,
@@ -112,7 +113,7 @@ def run_crawl(job_id: int, website_id: int, domain: str, site_id: Optional[str] 
             return {"job_id": job_id, "status": "completed", "pages_found": 0}
 
         try:
-            increment_job_counter(job_id, "pages_found", len(target_urls))
+            set_job_counter(job_id, "pages_found", len(target_urls))
         except Exception as counter_err:
             logger.warning("Failed to set pages_found counter for job %d: %s", job_id, counter_err)
 
@@ -266,6 +267,16 @@ def _process_page(
         time.sleep(crawl_delay)
 
     if not result.ok:
+        # Check if this is an SPA HTML route that returned 404 on static GET
+        url_path = urlparse(url).path.lower()
+        is_static_asset = any(url_path.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js", ".json"])
+        if not is_static_asset and (result.status_code == 404 or result.error == "http_404"):
+            logger.info("Attempting Playwright SPA render for %s", url)
+            pw_res = fetch_page_with_playwright(url)
+            if pw_res.ok and pw_res.html and "404: NOT_FOUND" not in pw_res.html:
+                result = pw_res
+
+    if not result.ok:
         status = "timeout" if result.error == "timeout" else "failed"
         log_page_outcome(job_id, url, status, result.error)
         increment_job_counter(job_id, "pages_failed")
@@ -308,19 +319,17 @@ def _process_page(
     # ----------------------------------------------------------------------- #
     if is_pdf:
         pdf_text, is_ocr = pdf_extract(result.content, url=url)
-        if not pdf_text:
-            log_page_outcome(
-                job_id,
-                url,
-                "skipped-image-only",
-                "PDF has no extractable text layer and OCR returned empty",
-            )
-            increment_job_counter(job_id, "pages_skipped")
-            return "skipped-image-only"
-
-        source_type = "pdf-ocr" if is_ocr else "pdf"
-        log_status = "success-ocr" if is_ocr else "success"
         pdf_title = posixpath.basename(urlparse(url).path.rstrip("/")) or "PDF Document"
+
+        if not pdf_text:
+            # Fallback document indexing so scanned/visual PDFs are included in the knowledge base
+            logger.info("PDF %s has no text layer/OCR; creating structured document reference for knowledge base", url)
+            pdf_text = f"Document Title: {pdf_title}\nFile Format: PDF Document\nSource URL: {url}\nContent Note: This document is a visual or scanned PDF titled '{pdf_title}'. Refer to the source URL for diagrams, charts, and complete visual layout."
+            source_type = "pdf-media"
+            log_status = "success"
+        else:
+            source_type = "pdf-ocr" if is_ocr else "pdf"
+            log_status = "success-ocr" if is_ocr else "success"
 
         new_hash = compute_hash(pdf_text)
         if crawl_type == "incremental" and known and not content_changed(pdf_text, known.get("content_hash")):

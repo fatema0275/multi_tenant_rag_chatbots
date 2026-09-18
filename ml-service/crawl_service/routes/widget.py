@@ -60,6 +60,12 @@ def get_public_widget_config():
     }), 200
 
 
+_TOKEN_CACHE = {}
+_CACHE_TTL = 300  # 5 minutes
+
+import time
+
+
 @widget_bp.post("/api/widget/query")
 def public_widget_query():
     body = request.get_json(silent=True) or {}
@@ -72,18 +78,26 @@ def public_widget_query():
     if not message:
         return jsonify({"error": "message is required"}), 400
 
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT c.id as config_id, c.website_id, w.site_id, w.domain
-                FROM chatbot_configs c
-                JOIN websites w ON c.website_id = w.id
-                WHERE c.embed_token = %s AND c.is_active = true
-                """,
-                (token,),
-            )
-            row = cur.fetchone()
+    # Fast in-memory cache check
+    now = time.time()
+    cached = _TOKEN_CACHE.get(token)
+    if cached and (now - cached["timestamp"]) < _CACHE_TTL:
+        row = cached["data"]
+    else:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT c.id as config_id, c.website_id, w.site_id, w.domain
+                    FROM chatbot_configs c
+                    JOIN websites w ON c.website_id = w.id
+                    WHERE c.embed_token = %s AND c.is_active = true
+                    """,
+                    (token,),
+                )
+                row = cur.fetchone()
+        if row:
+            _TOKEN_CACHE[token] = {"data": row, "timestamp": now}
 
     if not row:
         return jsonify({"error": "Invalid or inactive widget token"}), 404
@@ -100,7 +114,7 @@ def public_widget_query():
         res = requests.post(
             chat_endpoint,
             json={"query": message},
-            timeout=25
+            timeout=45
         )
         if res.status_code == 200:
             data = res.json()
