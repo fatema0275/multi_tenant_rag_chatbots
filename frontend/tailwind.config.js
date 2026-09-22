@@ -49,9 +49,20 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        heading: ['Sora', 'Inter', 'sans-serif'],
-        mono: ['JetBrains Mono', 'IBM Plex Mono', 'ui-monospace', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        heading: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        '2xs': ['0.75rem', { lineHeight: '1.125rem' }],     // 12px
+        'xs': ['0.84rem', { lineHeight: '1.3rem' }],        // ~13.5px (comfortably readable)
+        'sm': ['0.95rem', { lineHeight: '1.45rem' }],       // ~15.2px (clean body text)
+        'base': ['1.0625rem', { lineHeight: '1.65rem' }],   // ~17px (prominent text)
+        'lg': ['1.1875rem', { lineHeight: '1.75rem' }],     // ~19px
+        'xl': ['1.35rem', { lineHeight: '1.9rem' }],        // ~21.6px
+        '2xl': ['1.65rem', { lineHeight: '2.2rem' }],       // ~26.4px
+        '3xl': ['2.05rem', { lineHeight: '2.5rem' }],       // ~32.8px
+        '4xl': ['2.6rem', { lineHeight: '3.1rem' }],        // ~41.6px
       },
       borderRadius: {
         card: '18px',

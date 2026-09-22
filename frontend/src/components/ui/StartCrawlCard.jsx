@@ -62,13 +62,13 @@ const StartCrawlCard = () => {
 
     if (triggerCrawl.fulfilled.match(result)) {
       toast.success(
-        result.payload.message || `Crawl started for ${selectedSite?.domain}`
+        result.payload.message || `Scan started for ${selectedSite?.domain}`
       );
       // Reset dropdown so the user doesn't accidentally double-submit
       setSelectedId('');
       setForceCrawl(false);
     } else {
-      toast.error(result.payload || 'Failed to start crawl. Check the activity log.');
+      toast.error(result.payload || 'Failed to start scan. Check the activity log.');
     }
   };
 
@@ -81,10 +81,10 @@ const StartCrawlCard = () => {
     >
       {/* Card header */}
       <h2 className="font-heading font-semibold text-[15px] text-zinc-900 dark:text-white mb-1">
-        Start a Crawl
+        Scan Website
       </h2>
       <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark mb-5">
-        Select a registered website and queue an indexing job. Unverified sites are disabled.
+        Select a registered website and run a website scan. Unverified sites are disabled.
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-2.5" noValidate>
@@ -99,22 +99,10 @@ const StartCrawlCard = () => {
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
               disabled={crawling}
-              className={`
-                w-full h-11 pl-10 pr-9 rounded-[14px] border appearance-none
-                text-sm transition-all duration-200 focus:outline-none cursor-pointer
-                bg-zinc-50 dark:bg-[#0E0E12]
-                text-txt-primary-light dark:text-txt-primary-dark
-                disabled:opacity-50 disabled:cursor-not-allowed
-                ${selectedId
-                  ? isVerified
-                    ? 'border-accent focus:border-accent focus:shadow-[0_0_0_3px_rgba(34,197,94,0.12)]'
-                    : 'border-amber-400 focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(251,191,36,0.12)]'
-                  : 'border-zinc-200 dark:border-border-dark focus:border-accent focus:shadow-[0_0_0_3px_rgba(34,197,94,0.12)]'
-                }
-              `}
               aria-label="Select website to crawl"
+              className="w-full h-11 pl-10 pr-9 rounded-[14px] border border-zinc-200 dark:border-border-dark bg-zinc-50 dark:bg-[#0E0E12] text-sm text-txt-primary-light dark:text-txt-primary-dark appearance-none focus:outline-none focus:border-accent focus:shadow-accent-glow transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="" className="text-zinc-400 dark:text-zinc-500">
+              <option value="" disabled>
                 Choose a website...
               </option>
 
@@ -160,7 +148,7 @@ const StartCrawlCard = () => {
             ) : (
               <>
                 <Play className="w-4 h-4" />
-                {forceCrawl ? 'Force Re-crawl' : 'Start Crawl'}
+                {forceCrawl ? 'Force Re-scan' : 'Scan Website'}
               </>
             )}
           </button>
@@ -178,7 +166,7 @@ const StartCrawlCard = () => {
                 className="rounded border-zinc-300 dark:border-zinc-700 text-accent focus:ring-accent w-3.5 h-3.5"
               />
               <span>
-                <strong>Force full re-crawl:</strong> wipe previous cache and re-index all pages from scratch.
+                <strong>Force full re-scan:</strong> wipe previous cache and re-index all pages from scratch.
               </span>
             </label>
           </div>

@@ -49,7 +49,7 @@ const getBadgeConfig = (status, crawlStatus) => {
   const crawl = crawlStatus || 'pending';
   if (crawl === 'running' || crawl === 'crawling') {
     return {
-      label: 'Crawling',
+      label: 'Scanning',
       color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
       dot: 'bg-blue-400 animate-pulse',
       icon: Zap,
@@ -244,7 +244,7 @@ const MyWebsites = () => {
               <option value="all">All Statuses</option>
               <option value="ready">Ready</option>
               <option value="verified">Verified</option>
-              <option value="crawling">Crawling</option>
+              <option value="crawling">Scanning</option>
               <option value="error">Error</option>
             </select>
             <Filter className="w-3.5 h-3.5 text-zinc-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -277,32 +277,44 @@ const MyWebsites = () => {
         </div>
       ) : filteredWebsites.length === 0 ? (
         /* Empty State */
-        <div className="py-20 rounded-[18px] bg-[#131318] border border-[#27272A] text-center p-8 space-y-4">
-          <h3 className="font-heading font-bold text-lg text-white">
-            {websites.length === 0 ? 'No websites registered yet' : 'No matching websites found'}
-          </h3>
-          <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
-            {websites.length === 0
-              ? 'Add your first domain to index pages and configure your custom AI widget.'
-              : 'Try clearing your search query or filter to view registered websites.'}
-          </p>
+        <div className="py-16 rounded-[18px] bg-[#131318] border border-[#27272A] text-center p-8 space-y-3">
           {websites.length === 0 ? (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-xs transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
-            >
-              Register Your First Website
-            </button>
+            <>
+              <p className="font-heading font-semibold text-base text-zinc-200">
+                You haven't added any websites yet.
+              </p>
+              <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                Add your first website to get started.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
+                >
+                  Add Website
+                </button>
+              </div>
+            </>
           ) : (
-            <button
-              onClick={() => {
-                setSearch('');
-                setStatusFilter('all');
-              }}
-              className="px-4 py-2 rounded-[10px] bg-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold"
-            >
-              Reset Filters
-            </button>
+            <>
+              <p className="font-heading font-semibold text-base text-zinc-200">
+                No matching websites found.
+              </p>
+              <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                Try resetting your search query or status filter to view registered websites.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    setSearch('');
+                    setStatusFilter('all');
+                  }}
+                  className="px-4 py-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold"
+                >
+                  Reset Filters
+                </button>
+              </div>
+            </>
           )}
         </div>
       ) : (
@@ -355,11 +367,11 @@ const MyWebsites = () => {
                     </div>
                   </div>
 
-                  {/* Metadata Row: Last crawl time & Chunk count */}
+                  {/* Metadata Row: Last scan time & Content Block count */}
                   <div className="grid grid-cols-2 gap-4 py-3 px-4 rounded-[14px] bg-[#09090B] border border-[#27272A]/70">
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
-                        <Clock className="w-3 h-3 text-zinc-400" /> Last Crawl
+                        <Clock className="w-3 h-3 text-zinc-400" /> Last Scan
                       </span>
                       <p className="text-xs font-mono text-zinc-300 truncate">
                         {formatTimestamp(lastCrawl)}
@@ -367,21 +379,21 @@ const MyWebsites = () => {
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
-                        <Layers className="w-3 h-3 text-zinc-400" /> Chunk Count
+                        <Layers className="w-3 h-3 text-zinc-400" /> Content Blocks
                       </span>
                       <p className="text-xs font-mono text-zinc-300">
-                        {chunkCount} chunks
+                        {chunkCount} content blocks
                       </p>
                     </div>
                   </div>
 
                   {/* Bottom: Quick Action Buttons */}
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-[#27272A]/70">
-                    {/* 1. Crawl Now */}
+                    {/* 1. Scan Website */}
                     <button
                       onClick={() => handleCrawlNow(site)}
                       disabled={isCrawling}
-                      title="Trigger indexing crawl now"
+                      title="Trigger indexing scan now"
                       className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {isCrawling ? (
@@ -389,17 +401,17 @@ const MyWebsites = () => {
                       ) : (
                         <Play className="w-3.5 h-3.5 text-[#22C55E]" />
                       )}
-                      <span>Crawl Now</span>
+                      <span>Scan Website</span>
                     </button>
 
-                    {/* 2. Crawl Logs */}
+                    {/* 2. Scan History */}
                     <button
                       onClick={() => handleViewLogs(site)}
-                      title="View live & historical crawl logs"
+                      title="View live & historical scan history"
                       className="h-9 px-2 rounded-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <Activity className="w-3.5 h-3.5" />
-                      <span>Crawl Logs</span>
+                      <span>Scan History</span>
                     </button>
 
                     {/* 3. Open Studio */}
@@ -476,7 +488,7 @@ const MyWebsites = () => {
                 </button>
               </div>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Provide the website domain to index. Content will be chunked, embedded, and made available for verified RAG generation.
+                Provide the website domain to index. Content will be scanned, indexed, and made available for verified answer generation.
               </p>
               <form onSubmit={handleAddSubmit} className="space-y-4">
                 <input
@@ -598,7 +610,7 @@ const MyWebsites = () => {
         onConfirm={handleDeleteConfirm}
         loading={deleteLoading}
         title={`Delete ${deleteTarget?.domain}?`}
-        description="This will permanently delete this website, purge all indexed chunks from pgvector, and deactivate its embedded chatbot widget. This action cannot be reversed."
+        description="This will permanently delete this website, purge all indexed content blocks, and deactivate its embedded chatbot widget. This action cannot be reversed."
         confirmText="Delete Website"
         cancelText="Keep Website"
         danger={true}

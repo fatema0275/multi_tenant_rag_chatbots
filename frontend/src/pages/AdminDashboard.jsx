@@ -337,8 +337,8 @@ const AdminDashboard = () => {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={Users} label="Total Users" value={stats.totalUsers} sub="Registered tenants" delay={0} />
           <StatCard icon={Globe} label="Total Websites" value={stats.totalWebsites} sub="Registered domains" accent delay={0.08} />
-          <StatCard icon={Activity} label="Crawls Today" value={stats.crawlsToday} sub="Active & past jobs" delay={0.16} />
-          <StatCard icon={BarChart2} label="Indexed Chunks" value={stats.totalChunks.toLocaleString()} sub="RAG Knowledge base" delay={0.24} />
+          <StatCard icon={Activity} label="Scans Today" value={stats.crawlsToday} sub="Active & past jobs" delay={0.16} />
+          <StatCard icon={BarChart2} label="Indexed Content Blocks" value={stats.totalChunks.toLocaleString()} sub="Indexed Content" delay={0.24} />
         </div>
 
         {/* Search & Tabs control bar */}
@@ -365,7 +365,7 @@ const AdminDashboard = () => {
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
-              Crawled Websites ({websites.length})
+              Scanned Websites ({websites.length})
             </button>
           </div>
 
@@ -519,7 +519,7 @@ const AdminDashboard = () => {
                                                 {site.domain}
                                               </div>
                                               <div className="text-[10px] text-txt-secondary-light dark:text-txt-secondary-dark">
-                                                Chunks Indexed: <span className="font-bold text-accent">{site.chunksCount}</span>
+                                                Content Blocks Indexed: <span className="font-bold text-accent">{site.chunksCount}</span>
                                               </div>
                                             </div>
                                           </div>
@@ -553,8 +553,8 @@ const AdminDashboard = () => {
                       <th className="px-4 py-3.5">Website Domain</th>
                       <th className="px-4 py-3.5">Owner Email</th>
                       <th className="px-4 py-3.5">Status</th>
-                      <th className="px-4 py-3.5">Indexed Chunks</th>
-                      <th className="px-4 py-3.5">Last Crawled</th>
+                      <th className="px-4 py-3.5">Indexed Content Blocks</th>
+                      <th className="px-4 py-3.5">Last Scanned</th>
                       <th className="px-4 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -713,7 +713,7 @@ const AdminDashboard = () => {
                     Delete Registered User?
                   </h3>
                   <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark mt-1 leading-relaxed">
-                    This will permanently delete user <span className="font-bold text-zinc-900 dark:text-white">{deleteUser.email}</span> along with all registered websites, crawl jobs, and indexed document chunks.
+                    This will permanently delete user <span className="font-bold text-zinc-900 dark:text-white">{deleteUser.email}</span> along with all registered websites, scan history, and indexed document content blocks.
                   </p>
                 </div>
               </div>

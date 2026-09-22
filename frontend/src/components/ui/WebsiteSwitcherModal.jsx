@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Search, Check, Plus, X, ArrowRight } from 'lucide-react';
 import { useActiveWebsite } from '../../context/ActiveWebsiteContext';
 
+import { getSiteDisplayName } from '../../layouts/DashboardLayout';
+
 const getStatusColor = (w) => {
   const crawl = w?.site?.crawl_status || w?.crawl_status || 'pending';
   if (crawl === 'completed' || w?.verification_status === 'verified') return 'bg-[#22C55E]';
@@ -36,7 +38,7 @@ const WebsiteSwitcherModal = ({ isOpen, onClose, onOpenAddSite }) => {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return websites;
-    return websites.filter((w) => w.domain?.toLowerCase().includes(query));
+    return websites.filter((w) => w.domain?.toLowerCase().includes(query) || getSiteDisplayName(w).toLowerCase().includes(query));
   }, [websites, search]);
 
   const handleSelect = (id) => {
@@ -91,15 +93,19 @@ const WebsiteSwitcherModal = ({ isOpen, onClose, onOpenAddSite }) => {
             {/* List */}
             <div className="flex-1 overflow-y-auto p-2 divide-y divide-[#27272A]/50">
               {filtered.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
-                  {websites.length === 0
-                    ? 'No websites registered yet.'
-                    : 'No websites match your search.'}
+                <div className="py-8 text-center space-y-1">
+                  <p className="font-heading font-semibold text-xs text-zinc-200">
+                    {websites.length === 0 ? "You haven't added any websites yet." : "No matching websites found."}
+                  </p>
+                  <p className="text-[11px] text-zinc-400">
+                    {websites.length === 0 ? "Add your first website to get started." : "Try clearing your search query."}
+                  </p>
                 </div>
               ) : (
                 filtered.map((site) => {
                   const isActive = site.id === activeWebsiteId;
                   const dotClass = getStatusColor(site);
+                  const displayName = getSiteDisplayName(site);
                   return (
                     <button
                       key={site.id}
@@ -113,11 +119,11 @@ const WebsiteSwitcherModal = ({ isOpen, onClose, onOpenAddSite }) => {
                       <div className="flex items-center gap-3 min-w-0">
                         <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}`} />
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold truncate text-white">
-                            {site.domain}
+                          <p className="text-xs font-heading font-semibold truncate text-white">
+                            {displayName}
                           </p>
                           <p className="text-[11px] text-zinc-400 truncate">
-                            {site.verification_status === 'verified' ? 'Verified Domain' : 'Attested'} · tenant_{site.id}
+                            {site.domain} · {site.verification_status === 'verified' ? 'Verified Domain' : 'Attested'}
                           </p>
                         </div>
                       </div>

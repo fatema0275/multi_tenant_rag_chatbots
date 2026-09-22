@@ -91,7 +91,7 @@ const Dashboard = () => {
       id: 'active-crawls',
       title: 'Active Indexing Jobs',
       value: loading ? null : crawlingCount,
-      subtitle: 'Sites queued or crawling',
+      subtitle: 'Sites queued or scanning',
       icon: Zap,
       targetPath: '/dashboard/websites',
     },
@@ -99,13 +99,13 @@ const Dashboard = () => {
       id: 'total-tokens',
       title: 'Total Tokens Consumed',
       value: loading ? null : totalTokens.toLocaleString(),
-      subtitle: 'RAG embeddings & chat context',
+      subtitle: 'Content block embeddings & chat context',
       icon: Activity,
       targetPath: '/dashboard/analytics',
     },
     {
       id: 'entailment-rate',
-      title: 'Entailment Rate',
+      title: 'Answer Confidence',
       value: loading ? null : websites.length > 0 ? '98.4%' : '—',
       subtitle: 'Hallucination-free verification',
       icon: BarChart3,
@@ -125,13 +125,13 @@ const Dashboard = () => {
   const combinedActivity = useMemo(() => {
     const list = [];
     websites.forEach((site) => {
-      // Crawl events
+      // Scan events
       const crawlStatus = site.site?.crawl_status || site.crawl_status;
       if (crawlStatus) {
         list.push({
           id: `crawl-${site.id}`,
           type: 'crawl',
-          title: `Crawl status: ${crawlStatus}`,
+          title: `Scan status: ${crawlStatus}`,
           domain: site.domain,
           siteId: site.id,
           timestamp: site.site?.last_crawled_at || site.updatedAt || site.updated_at || site.created_at,
@@ -215,7 +215,7 @@ const Dashboard = () => {
           Dashboard
         </h1>
         <p className="text-xs sm:text-sm text-zinc-400">
-          Real-time overview of your AI chatbots, crawling pipeline, and query engagement.
+          Real-time overview of your AI chatbots, scanning pipeline, and query engagement.
         </p>
       </div>
 
@@ -234,7 +234,7 @@ const Dashboard = () => {
               Get Started with Your First Website
             </h2>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
-              Connect your domain to start autonomous crawling, extract website branding, and deploy hallucination-free AI widgets powered by RAG and NLI entailment.
+              Connect your domain to start autonomous website scanning, extract website branding, and deploy hallucination-free AI widgets.
             </p>
           </div>
 
@@ -243,7 +243,7 @@ const Dashboard = () => {
             id="get-started-add-site-btn"
             className="px-6 py-3 rounded-[14px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#22C55E]/20 whitespace-nowrap active:scale-95"
           >
-            <Plus className="w-4 h-4" /> Add Your First Website
+            <Plus className="w-4 h-4" /> Add Website
           </button>
         </motion.div>
       )}
@@ -313,7 +313,7 @@ const Dashboard = () => {
                 Chronological Activity Feed
               </h2>
               <p className="text-[11px] text-zinc-400">
-                Latest crawl jobs, domain verifications, and knowledge sync events.
+                Latest scan history, domain verifications, and update history.
               </p>
             </div>
           </div>
@@ -339,9 +339,9 @@ const Dashboard = () => {
                 className="h-9 pl-3 pr-8 rounded-[10px] bg-[#09090B] border border-[#27272A] text-xs text-zinc-300 focus:outline-none focus:border-[#22C55E] transition-colors appearance-none cursor-pointer"
               >
                 <option value="all">All Events</option>
-                <option value="crawl">Crawls</option>
+                <option value="crawl">Website Scans</option>
                 <option value="verification">Verifications</option>
-                <option value="sync">Sync Events</option>
+                <option value="sync">Update History</option>
               </select>
               <Filter className="w-3 h-3 text-zinc-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -363,19 +363,44 @@ const Dashboard = () => {
             ))}
           </div>
         ) : filteredActivity.length === 0 ? (
-          <div className="py-12 text-center text-zinc-500 text-xs space-y-3">
-            <p className="max-w-xs mx-auto text-zinc-400">
-              {combinedActivity.length === 0
-                ? 'No activity yet. Register a website above to trigger indexing and live events.'
-                : 'No activity matches your current search or filter criteria.'}
-            </p>
-            {websites.length === 0 && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-4 py-2 rounded-[10px] bg-[#22C55E] text-white font-semibold text-xs transition-all hover:bg-[#16A34A] cursor-pointer"
-              >
-                Register Your First Site
-              </button>
+          <div className="py-12 text-center p-6 space-y-3">
+            {combinedActivity.length === 0 ? (
+              <>
+                <p className="font-heading font-semibold text-base text-zinc-200">
+                  You haven't added any websites yet.
+                </p>
+                <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                  Add your first website to get started.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
+                  >
+                    Add Website
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="font-heading font-semibold text-base text-zinc-200">
+                  No activity matches your filters.
+                </p>
+                <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                  Try resetting your search query or event filter.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setActivitySearch('');
+                      setActivityFilter('all');
+                    }}
+                    className="px-4 py-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </>
             )}
           </div>
         ) : (

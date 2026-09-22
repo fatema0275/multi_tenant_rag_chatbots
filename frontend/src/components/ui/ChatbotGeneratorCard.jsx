@@ -138,7 +138,7 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
             <div>
               <h3 className="text-sm font-bold text-white">AI Chatbot Configuration</h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Generate widget, extract branding &amp; get embed code.
+                Generate widget, extract branding &amp; get your chatbot code.
               </p>
             </div>
           </div>
@@ -170,7 +170,7 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
         {/* Lock badge */}
         {config?.overrides_locked && (
           <div className="mt-3 flex items-center gap-2 text-[11px] text-amber-400">
-            <Lock className="w-3 h-3" />
+            <Lock className="w-3.5 h-3.5" />
             <span>Manual color overrides active — regenerating will re-extract branding</span>
           </div>
         )}
@@ -179,7 +179,7 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
         {!isCrawlCompleted && (
           <div className="mt-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>Crawl status is <strong>{crawlStatus}</strong>. Complete the knowledge base crawl first.</span>
+            <span>Scan status is <strong>{crawlStatus}</strong>. Complete the website scan first.</span>
           </div>
         )}
       </div>
@@ -275,12 +275,12 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
             </button>
           </div>
 
-          {/* ── Section 3: Embed Code ── */}
+          {/* ── Section 3: Your Chatbot Code ── */}
           <div className="rounded-2xl bg-zinc-800/50 border border-zinc-700/60 p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Code className="w-4 h-4 text-emerald-400" />
-                <h4 className="text-sm font-bold text-white">Embed Code</h4>
+                <h4 className="text-sm font-bold text-white">Your Chatbot Code</h4>
               </div>
               <button
                 onClick={handleCopyCode}
@@ -302,9 +302,23 @@ const ChatbotGeneratorCard = ({ website, onConfigChange }) => {
 
       {/* ── Empty state ── */}
       {!loading && !config && isCrawlCompleted && (
-        <div className="text-center py-12 text-zinc-500 text-xs">
-          <Bot className="w-8 h-8 mx-auto mb-3 text-zinc-700" />
-          No chatbot generated yet. Click <strong className="text-zinc-300">Generate Chatbot</strong> to extract branding and create your widget.
+        <div className="text-center py-12 space-y-3">
+          <p className="font-heading font-semibold text-base text-zinc-200">
+            No chatbot generated yet.
+          </p>
+          <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+            Extract website branding and create your chatbot widget.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20 disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              <span>Generate Chatbot</span>
+            </button>
+          </div>
         </div>
       )}
 

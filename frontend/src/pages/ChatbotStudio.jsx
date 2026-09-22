@@ -281,8 +281,8 @@ const ChatbotStudio = () => {
     const res = await dispatch(triggerCrawl(activeWebsite.id));
     setIsSyncing(false);
     if (triggerCrawl.fulfilled.match(res)) {
-      toast.success('Knowledge Base sync crawl started!');
-      // Re-fetch jobs
+      toast.success('Indexed content update scan started!');
+      loadSyncJobs(activeWebsite.id);
       fetch(`/api/websites/${activeWebsite.id}/crawl-jobs`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -355,23 +355,30 @@ const ChatbotStudio = () => {
   const tabs = [
     { id: 'branding', label: 'Branding', icon: Palette },
     { id: 'widget', label: 'Widget Settings', icon: Sliders },
-    { id: 'embed', label: 'Embed Code', icon: Code },
-    { id: 'knowledge', label: 'Manual Knowledge', icon: BookOpen },
-    { id: 'sync', label: 'Sync', icon: RefreshCw },
+    { id: 'embed', label: 'Your Chatbot Code', icon: Code },
+    { id: 'knowledge', label: 'Manual Content', icon: BookOpen },
+    { id: 'sync', label: 'Update History', icon: RefreshCw },
     // On screens < 1280px, Live Preview appears as a tab
     { id: 'preview', label: 'Live Preview', icon: Eye, mobileOnly: true },
   ];
 
   if (!activeWebsite) {
     return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
-        <Bot className="w-12 h-12 text-zinc-600" />
-        <h2 className="font-heading font-bold text-lg text-white">
-          No Website Selected
-        </h2>
-        <p className="text-xs text-zinc-400 max-w-sm">
-          Please register or select a website from the navigation to configure its AI Chatbot Studio.
+      <div className="p-8 flex flex-col items-center justify-center min-h-[60vh] text-center space-y-3">
+        <p className="font-heading font-semibold text-base text-zinc-200">
+          You haven't added any websites yet.
         </p>
+        <p className="text-sm text-zinc-400 max-w-sm">
+          Add your first website to get started.
+        </p>
+        <div className="pt-2">
+          <button
+            onClick={() => navigate('/dashboard/websites')}
+            className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
+          >
+            Add Website
+          </button>
+        </div>
       </div>
     );
   }
@@ -471,9 +478,9 @@ const ChatbotStudio = () => {
                 <div className="flex items-center gap-2.5">
                   <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
                   <div>
-                    <h4 className="text-xs font-bold text-white">Crawl Required Before Chatbot Generation</h4>
+                    <h4 className="text-xs font-bold text-white">Scan Required Before Chatbot Generation</h4>
                     <p className="text-[11px] text-amber-400/90">
-                      Current status: <strong className="uppercase">{crawlStatus}</strong>. Websites that have not completed crawling cannot generate a chatbot.
+                      Current status: <strong className="uppercase">{crawlStatus}</strong>. Websites that have not completed scanning cannot generate a chatbot.
                     </p>
                   </div>
                 </div>
@@ -482,7 +489,7 @@ const ChatbotStudio = () => {
                   className="px-4 py-2 rounded-[10px] bg-zinc-800 text-zinc-500 text-xs font-bold transition-all flex items-center gap-1.5 cursor-not-allowed shrink-0 border border-zinc-700 opacity-60"
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Crawl Required</span>
+                  <span>Scan Required</span>
                 </button>
               </div>
             ) : (
@@ -731,48 +738,53 @@ const ChatbotStudio = () => {
           </div>
         )}
 
-        {/* ── Tab 3: Embed Code ───────────────────────────────── */}
+        {/* ── Tab 3: Your Chatbot Code ───────────────────────── */}
         {activeTab === 'embed' && (
           <div className="rounded-[18px] bg-[#131318] border border-[#27272A] p-6 space-y-4">
             {!config?.embed_token ? (
-              <div className="py-8 px-6 rounded-[14px] bg-[#09090B] border border-[#27272A] text-center space-y-4">
-                <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-                  {isCrawlCompleted ? <Sparkles className="w-6 h-6 text-[#22C55E]" /> : <Lock className="w-6 h-6 text-amber-400" />}
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-heading font-bold text-base text-white">
-                    {isCrawlCompleted ? 'Chatbot Script Not Generated Yet' : 'Crawl Required Before Script Generation'}
-                  </h4>
-                  <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                    {isCrawlCompleted
-                      ? 'Your site content is indexed and ready. Click Generate Chatbot below to build your AI chatbot configuration and create your unique script embed snippet.'
-                      : `Current crawl status is "${crawlStatus}". Websites that have not completed crawling cannot generate a chatbot script.`}
+              !isCrawlCompleted ? (
+                <div className="py-12 px-6 rounded-[14px] bg-[#09090B] border border-[#27272A] text-center space-y-3">
+                  <p className="font-heading font-semibold text-base text-zinc-200">
+                    No scan has been run yet.
                   </p>
+                  <p className="text-sm text-zinc-400 max-w-md mx-auto">
+                    Run a scan to index your website's content.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={handleCrawlSite}
+                      disabled={isCrawlStarting}
+                      className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
+                    >
+                      Scan Now
+                    </button>
+                  </div>
                 </div>
-                {isCrawlCompleted ? (
-                  <button
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    className="px-6 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-[#22C55E]/20 disabled:opacity-50"
-                  >
-                    {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    <span>Generate Chatbot</span>
-                  </button>
-                ) : (
-                  <button
-                    disabled
-                    className="px-6 py-2.5 rounded-[12px] bg-zinc-800 text-zinc-500 text-xs font-bold transition-all inline-flex items-center gap-2 border border-zinc-700 opacity-60 cursor-not-allowed mx-auto"
-                  >
-                    <Lock className="w-4 h-4" />
-                    <span>Crawl Required</span>
-                  </button>
-                )}
-              </div>
+              ) : (
+                <div className="py-12 px-6 rounded-[14px] bg-[#09090B] border border-[#27272A] text-center space-y-3">
+                  <p className="font-heading font-semibold text-base text-zinc-200">
+                    Your chatbot code is not generated yet.
+                  </p>
+                  <p className="text-sm text-zinc-400 max-w-md mx-auto">
+                    Generate your chatbot to create your widget code snippet.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={handleGenerate}
+                      disabled={generating}
+                      className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
+                    >
+                      {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      <span>Generate Chatbot</span>
+                    </button>
+                  </div>
+                </div>
+              )
             ) : (
               <>
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading font-bold text-sm text-white">
-                    Integration Embed Snippet
+                    Your Chatbot Code
                   </h3>
                   <button
                     onClick={handleCopyCode}
@@ -801,13 +813,13 @@ const ChatbotStudio = () => {
           </div>
         )}
 
-        {/* ── Tab 4: Manual Knowledge ─────────────────────────── */}
+        {/* ── Tab 4: Manual Content ──────────────────────────── */}
         {activeTab === 'knowledge' && (
           <div className="rounded-[18px] bg-[#131318] border border-[#27272A] p-6 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-heading font-bold text-sm text-white">
-                  Manual Knowledge Base Entries
+                  Manual Content Entries
                 </h3>
                 <p className="text-[11px] text-zinc-400">
                   Inject explicit facts, Q&amp;A, and policies that take precedence during answer generation.
@@ -822,7 +834,7 @@ const ChatbotStudio = () => {
                 }}
                 className="px-3.5 py-2 rounded-[10px] bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer self-start sm:self-auto shadow-sm"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Knowledge
+                <Plus className="w-3.5 h-3.5" /> Add Content
               </button>
             </div>
 
@@ -833,25 +845,32 @@ const ChatbotStudio = () => {
                 type="text"
                 value={knowledgeSearch}
                 onChange={(e) => setKnowledgeSearch(e.target.value)}
-                placeholder="Search manual knowledge entries..."
+                placeholder="Search manual content entries..."
                 className="w-full h-9 pl-8 pr-4 rounded-[10px] bg-[#09090B] border border-[#27272A] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22C55E] transition-colors"
               />
             </div>
 
             {/* Knowledge Table / List */}
             {filteredKnowledge.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500 text-xs rounded-[14px] bg-[#09090B] border border-[#27272A] p-6 space-y-2">
-                <p>No manual knowledge entries found.</p>
-                <button
-                  onClick={() => {
-                    setEditingKnowledge(null);
-                    setKnowledgeForm({ title: '', content: '' });
-                    setShowKnowledgeModal(true);
-                  }}
-                  className="text-xs font-semibold text-[#22C55E] hover:underline"
-                >
-                  Add your first custom fact
-                </button>
+              <div className="py-12 text-center rounded-[14px] bg-[#09090B] border border-[#27272A] p-6 space-y-3">
+                <p className="font-heading font-semibold text-base text-zinc-200">
+                  No manual content added yet.
+                </p>
+                <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                  Add explicit facts, answers, or policies to enhance your indexed content.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setEditingKnowledge(null);
+                      setKnowledgeForm({ title: '', content: '' });
+                      setShowKnowledgeModal(true);
+                    }}
+                    className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20"
+                  >
+                    Add Content
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="rounded-[14px] bg-[#09090B] border border-[#27272A] divide-y divide-[#27272A] overflow-hidden">
@@ -896,16 +915,16 @@ const ChatbotStudio = () => {
           </div>
         )}
 
-        {/* ── Tab 5: Sync ─────────────────────────────────────── */}
+        {/* ── Tab 5: Update History ──────────────────────────── */}
         {activeTab === 'sync' && (
           <div className="rounded-[18px] bg-[#131318] border border-[#27272A] p-6 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-heading font-bold text-sm text-white">
-                  Knowledge Sync &amp; Re-Indexing
+                  Content Update &amp; Re-Indexing
                 </h3>
                 <p className="text-[11px] text-zinc-400">
-                  Last synced:{' '}
+                  Last updated:{' '}
                   <span className="font-mono text-zinc-200">
                     {activeWebsite?.site?.last_crawled_at
                       ? new Date(activeWebsite.site.last_crawled_at).toLocaleString()
@@ -924,7 +943,7 @@ const ChatbotStudio = () => {
                 ) : (
                   <RefreshCw className="w-3.5 h-3.5" />
                 )}
-                <span>Sync Now</span>
+                <span>Update Now</span>
               </button>
             </div>
 
@@ -932,7 +951,7 @@ const ChatbotStudio = () => {
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-xs font-semibold text-zinc-300">
-                  Recent Sync Events
+                  Recent Update History
                 </span>
                 <div className="relative w-48">
                   <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -940,7 +959,7 @@ const ChatbotStudio = () => {
                     type="text"
                     value={syncSearch}
                     onChange={(e) => setSyncSearch(e.target.value)}
-                    placeholder="Filter events..."
+                    placeholder="Filter update history..."
                     className="w-full h-8 pl-8 pr-3 rounded-[8px] bg-[#09090B] border border-[#27272A] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22C55E] transition-colors"
                   />
                 </div>
@@ -952,8 +971,22 @@ const ChatbotStudio = () => {
                   <SkeletonBlock className="h-10 rounded-[10px]" />
                 </div>
               ) : filteredSyncJobs.length === 0 ? (
-                <div className="py-10 text-center text-zinc-500 text-xs rounded-[14px] bg-[#09090B] border border-[#27272A] p-4">
-                  No sync events logged yet. Click <strong>Sync Now</strong> to trigger an update.
+                <div className="py-12 text-center rounded-[14px] bg-[#09090B] border border-[#27272A] p-6 space-y-3">
+                  <p className="font-heading font-semibold text-base text-zinc-200">
+                    No update history found.
+                  </p>
+                  <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                    Trigger an update to refresh and re-index your website's content.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      onClick={handleSyncNow}
+                      disabled={isSyncing}
+                      className="px-5 py-2.5 rounded-[12px] bg-[#22C55E] hover:bg-[#16A34A] text-white font-semibold text-sm transition-all cursor-pointer shadow-md shadow-[#22C55E]/20 disabled:opacity-50"
+                    >
+                      Update Now
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-[14px] bg-[#09090B] border border-[#27272A] divide-y divide-[#27272A] overflow-hidden">

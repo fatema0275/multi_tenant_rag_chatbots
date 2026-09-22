@@ -3,8 +3,21 @@
 @tailwind utilities;
 
 @layer base {
+  :root, html {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.625;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.625;
+    letter-spacing: -0.011em;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     @apply bg-white text-zinc-900 transition-colors duration-300;
@@ -14,8 +27,19 @@
     @apply bg-[#09090B] text-zinc-100;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Sora', 'Inter', sans-serif;
+  h1, h2, h3, h4, h5, h6, [role="heading"], .font-heading {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+
+  p, span, label, input, button, td, th, textarea, select {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  nav a, nav button, [role="navigation"] a, [role="navigation"] button, .nav-label {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 600;
   }
 
   code, pre, .font-mono {

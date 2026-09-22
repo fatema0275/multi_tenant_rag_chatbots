@@ -154,7 +154,7 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent" />
           <h2 className="font-heading font-semibold text-[15px] text-zinc-900 dark:text-white">
-            Crawl Job Logs
+            Scan History
           </h2>
           {lastFetched && (
             <span className="text-[10px] font-mono text-txt-secondary-light dark:text-txt-secondary-dark pl-1">
@@ -164,7 +164,7 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Stop Crawl button for running jobs */}
+          {/* Stop Scan button for running jobs */}
           {hasRunningJob && (
             <button
               onClick={handleStopCrawl}
@@ -172,7 +172,7 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
               className="h-8 px-3 rounded-[10px] bg-red-500 hover:bg-red-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
             >
               {stopping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5 fill-current" />}
-              Stop Crawl
+              Stop Scan
             </button>
           )}
 
@@ -183,7 +183,7 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
               value={selectedId}
               onChange={handleSelect}
               className="h-8 pl-8 pr-7 rounded-[10px] border border-zinc-200 dark:border-border-dark bg-zinc-50 dark:bg-[#0E0E12] text-sm text-txt-primary-light dark:text-txt-primary-dark appearance-none focus:outline-none focus:border-accent transition-all cursor-pointer"
-              aria-label="Select website to view crawl logs"
+              aria-label="Select website to view scan history"
             >
               <option value="">Choose site...</option>
               {crawlableSites.map((site) => (
@@ -221,7 +221,7 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
             >
               <Search className="w-8 h-8 text-zinc-300 dark:text-zinc-600" />
               <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark">
-                Select a website above to view its crawl history.
+                Select a website above to view its scan history.
               </p>
             </motion.div>
           )}
@@ -236,7 +236,7 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
               className="flex items-center justify-center py-10 gap-2 text-txt-secondary-light dark:text-txt-secondary-dark"
             >
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">Loading jobs...</span>
+              <span className="text-sm">Loading history...</span>
             </motion.div>
           )}
 
@@ -261,16 +261,13 @@ const CrawlStatusPanel = ({ activeWebsiteId }) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center gap-2 py-10 text-center"
+              className="py-10 text-center space-y-2"
             >
-              <SkipForward className="w-8 h-8 text-zinc-300 dark:text-zinc-600" />
-              <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark">
-                No crawl jobs found for{' '}
-                <span className="font-mono font-medium text-txt-primary-light dark:text-txt-primary-dark">
-                  {selectedSite?.domain}
-                </span>
-                .<br />
-                Trigger one using the Start a Crawl card above.
+              <p className="font-heading font-semibold text-base text-zinc-900 dark:text-zinc-200">
+                No scan has been run yet.
+              </p>
+              <p className="text-sm text-txt-secondary-light dark:text-txt-secondary-dark max-w-sm mx-auto">
+                Run a scan to index your website's content.
               </p>
             </motion.div>
           )}

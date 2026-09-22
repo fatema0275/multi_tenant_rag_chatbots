@@ -156,7 +156,7 @@ const Settings = () => {
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <p className="text-xs text-zinc-400 max-w-lg leading-relaxed">
-              Permanently remove this domain, purge its vector embeddings, and invalidate all embedded widgets.
+              Permanently remove this domain, purge its embeddings, and invalidate all chatbot widgets.
             </p>
             <button
               onClick={() => setShowDeleteModal(true)}
@@ -175,7 +175,7 @@ const Settings = () => {
         onConfirm={handleDeleteWebsite}
         loading={deleteLoading}
         title={`Delete ${activeWebsite?.domain}?`}
-        description="This action cannot be undone. All knowledge base embeddings, configurations, and chat logs will be completely removed."
+        description="This action cannot be undone. All indexed content, configurations, and chat logs will be completely removed."
         confirmText="Yes, Delete Website"
         cancelText="Cancel"
         danger={true}
