@@ -2,6 +2,7 @@ import React, { useState, useId } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { triggerCrawl } from '../../store/websiteSlice';
+import ConfirmModal from './ConfirmModal';
 import toast from 'react-hot-toast';
 import {
   ChevronDown,
@@ -36,6 +37,8 @@ const StartCrawlCard = () => {
   const [selectedId, setSelectedId] = useState('');
   const [crawling, setCrawling] = useState(false);
   const [forceCrawl, setForceCrawl] = useState(false);
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [pendingSiteId, setPendingSiteId] = useState(null);
 
   // Unique id for label/select association (React 18 useId)
   const selectId = useId();
@@ -68,8 +71,30 @@ const StartCrawlCard = () => {
       setSelectedId('');
       setForceCrawl(false);
     } else {
-      toast.error(result.payload || 'Failed to start scan. Check the activity log.');
+      const errMsg = String(result.payload || '');
+      if (errMsg.toLowerCase().includes('already running') || errMsg.toLowerCase().includes('conflict')) {
+        setPendingSiteId(Number(selectedId));
+        setConflictModalOpen(true);
+      } else {
+        toast.error(errMsg || 'Failed to start scan. Check the activity log.');
+      }
     }
+  };
+
+  const handleConfirmForceCrawl = async () => {
+    if (!pendingSiteId) return;
+    setConflictModalOpen(false);
+    setCrawling(true);
+    const res = await dispatch(triggerCrawl({ websiteId: pendingSiteId, force: true }));
+    setCrawling(false);
+    if (triggerCrawl.fulfilled.match(res)) {
+      toast.success(res.payload.message || `Fresh scan started for ${selectedSite?.domain}`);
+      setSelectedId('');
+      setForceCrawl(false);
+    } else {
+      toast.error(String(res.payload || 'Failed to start force scan'));
+    }
+    setPendingSiteId(null);
   };
 
   return (
@@ -187,6 +212,18 @@ const StartCrawlCard = () => {
           )}
         </AnimatePresence>
       </form>
+
+      <ConfirmModal
+        isOpen={conflictModalOpen}
+        onClose={() => { setConflictModalOpen(false); setPendingSiteId(null); }}
+        onConfirm={handleConfirmForceCrawl}
+        title="Scan Already in Progress"
+        description={`A crawl job is currently active or queued for ${selectedSite?.domain || 'this website'}. Would you like to terminate the existing scan and start a fresh scan from scratch?`}
+        confirmText="Cancel Existing & Start Fresh"
+        cancelText="Keep Current Scan"
+        danger={false}
+        loading={crawling}
+      />
     </motion.div>
   );
 };

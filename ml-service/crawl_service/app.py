@@ -30,6 +30,13 @@ def create_app() -> Flask:
     # Initialize Flask-Limiter
     limiter.init_app(app)
 
+    # Clean up any jobs stuck in queued/running from prior crashed runs
+    try:
+        from crawl_service.db.crawl_jobs import cleanup_orphaned_jobs
+        cleanup_orphaned_jobs()
+    except Exception as exc:
+        app.logger.warning("Failed to run startup cleanup of orphaned crawl jobs: %s", exc)
+
     # ------------------------------------------------------------------ #
     # Rate Limiting Policies for Public Widget Endpoints (Module 4)       #
     # ------------------------------------------------------------------ #

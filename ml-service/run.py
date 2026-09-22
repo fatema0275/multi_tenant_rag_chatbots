@@ -15,12 +15,30 @@ Redis must be running before either process starts:
     # Or locally:   redis-server
 """
 
+import atexit
+import signal
 import sys, os
 sys.path.insert(0, r"C:\Python312\lib\site-packages")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from crawl_service.app import create_app
 from crawl_service.config import cfg
+
+
+def _shutdown_cleanup(*args):
+    try:
+        from crawl_service.db.crawl_jobs import cleanup_orphaned_jobs
+        cleanup_orphaned_jobs()
+    except Exception:
+        pass
+
+
+atexit.register(_shutdown_cleanup)
+try:
+    signal.signal(signal.SIGINT, lambda s, f: (_shutdown_cleanup(), sys.exit(0)))
+    signal.signal(signal.SIGTERM, lambda s, f: (_shutdown_cleanup(), sys.exit(0)))
+except Exception:
+    pass
 
 if __name__ == "__main__":
     app = create_app()
@@ -30,3 +48,4 @@ if __name__ == "__main__":
         debug=cfg.DEBUG,
         use_reloader=True,
     )
+

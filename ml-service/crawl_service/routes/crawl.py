@@ -25,6 +25,7 @@ from crawl_service.db.crawl_jobs import (
     get_crawl_job,
     create_crawl_job,
     get_active_job_for_website,
+    mark_job_cancelled,
 )
 from crawl_service.db.connection import get_db
 from crawl_service.tasks.crawl_task import run_crawl
@@ -144,11 +145,17 @@ def trigger_crawl():
     # --- Prevent duplicate concurrent jobs ---
     active_job = get_active_job_for_website(website_id)
     if active_job:
-        return jsonify({
-            "error": "A crawl job is already running for this website",
-            "job_id": active_job["id"],
-            "status": active_job["status"],
-        }), 409
+        if force:
+            logger.info("Force re-crawl requested for website_id=%s. Cancelling existing active job %s.", website_id, active_job["id"])
+            from crawl_service.tasks.crawl_task import cancel_job
+            cancel_job(active_job["id"])
+            mark_job_cancelled(active_job["id"])
+        else:
+            return jsonify({
+                "error": "A crawl job is already running for this website. You can cancel it or use 'Force Re-crawl'.",
+                "job_id": active_job["id"],
+                "status": active_job["status"],
+            }), 409
 
     # --- Create job record and run crawl ---
     job_id = create_crawl_job(website_id)
@@ -184,6 +191,7 @@ def stop_crawl_job(job_id: int):
     """Manually stop/cancel an active crawl job."""
     from crawl_service.tasks.crawl_task import cancel_job
     cancel_job(job_id)
+    mark_job_cancelled(job_id)
 
     # Immediately ensure site crawl_status is transitioned out of 'running'
     try:

@@ -105,6 +105,8 @@ const MyWebsites = () => {
   // Crawling loading state per site
   const [crawlingSiteIds, setCrawlingSiteIds] = useState(new Set());
   const [selectedLogSiteId, setSelectedLogSiteId] = useState(null);
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [conflictSite, setConflictSite] = useState(null);
 
   const handleViewLogs = (site) => {
     setSelectedLogSiteId(site.id);
@@ -134,9 +136,9 @@ const MyWebsites = () => {
     navigate('/dashboard/analytics');
   };
 
-  const handleCrawlNow = async (site) => {
+  const handleCrawlNow = async (site, force = false) => {
     setCrawlingSiteIds((prev) => new Set(prev).add(site.id));
-    const res = await dispatch(triggerCrawl(site.id));
+    const res = await dispatch(triggerCrawl({ websiteId: site.id, force }));
     setCrawlingSiteIds((prev) => {
       const next = new Set(prev);
       next.delete(site.id);
@@ -146,8 +148,22 @@ const MyWebsites = () => {
     if (triggerCrawl.fulfilled.match(res)) {
       toast.success(res.payload.message || `Crawl started for ${site.domain}`);
     } else {
-      toast.error(res.payload || 'Failed to trigger crawl');
+      const errMsg = String(res.payload || '');
+      if (errMsg.toLowerCase().includes('already running') || errMsg.toLowerCase().includes('conflict')) {
+        setConflictSite(site);
+        setConflictModalOpen(true);
+      } else {
+        toast.error(errMsg || 'Failed to trigger crawl');
+      }
     }
+  };
+
+  const handleConfirmForceCrawl = async () => {
+    if (!conflictSite) return;
+    const target = conflictSite;
+    setConflictModalOpen(false);
+    setConflictSite(null);
+    await handleCrawlNow(target, true);
   };
 
   const handleAddSubmit = async (e) => {
@@ -614,6 +630,18 @@ const MyWebsites = () => {
         confirmText="Delete Website"
         cancelText="Keep Website"
         danger={true}
+      />
+
+      {/* ── Crawl Conflict Resolution Modal ───────────────────── */}
+      <ConfirmModal
+        isOpen={conflictModalOpen}
+        onClose={() => { setConflictModalOpen(false); setConflictSite(null); }}
+        onConfirm={handleConfirmForceCrawl}
+        title="Crawl Already in Progress"
+        description={`A crawl job is currently active or queued for ${conflictSite?.domain || 'this website'}. Would you like to terminate the active job and start a fresh crawl from scratch?`}
+        confirmText="Cancel Active & Start Fresh"
+        cancelText="Keep Current Job"
+        danger={false}
       />
     </div>
   );
