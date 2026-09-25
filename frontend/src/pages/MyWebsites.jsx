@@ -24,7 +24,7 @@ import {
   Filter,
   Clock,
   Layers,
-  CheckCircle2,
+  Check,
   Zap,
   AlertTriangle,
   XCircle,
@@ -51,7 +51,6 @@ const getBadgeConfig = (status, crawlStatus) => {
     return {
       label: 'Scanning',
       color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      dot: 'bg-blue-400 animate-pulse',
       icon: Zap,
     };
   }
@@ -59,7 +58,6 @@ const getBadgeConfig = (status, crawlStatus) => {
     return {
       label: 'Error',
       color: 'bg-red-500/10 text-red-400 border-red-500/20',
-      dot: 'bg-red-400',
       icon: XCircle,
     };
   }
@@ -67,14 +65,12 @@ const getBadgeConfig = (status, crawlStatus) => {
     return {
       label: crawl === 'completed' ? 'Ready' : 'Verified',
       color: 'bg-[#22C55E]/10 text-[#22C55E] border-[#22C55E]/20',
-      dot: 'bg-[#22C55E]',
-      icon: CheckCircle2,
+      icon: Check,
     };
   }
   return {
     label: 'Pending',
     color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    dot: 'bg-amber-400',
     icon: Clock,
   };
 };
@@ -265,7 +261,7 @@ const MyWebsites = () => {
             </select>
             <Filter className="w-3.5 h-3.5 text-zinc-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
-          <span className="text-xs text-zinc-500 px-2 font-mono">
+          <span className="text-xs text-zinc-400 px-2 font-medium">
             {filteredWebsites.length} site{filteredWebsites.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -296,7 +292,7 @@ const MyWebsites = () => {
         <div className="py-16 rounded-[18px] bg-[#131318] border border-[#27272A] text-center p-8 space-y-3">
           {websites.length === 0 ? (
             <>
-              <p className="font-heading font-semibold text-base text-zinc-200">
+              <p className="font-semibold text-base text-zinc-200">
                 You haven't added any websites yet.
               </p>
               <p className="text-sm text-zinc-400 max-w-sm mx-auto">
@@ -313,7 +309,7 @@ const MyWebsites = () => {
             </>
           ) : (
             <>
-              <p className="font-heading font-semibold text-base text-zinc-200">
+              <p className="font-semibold text-base text-zinc-200">
                 No matching websites found.
               </p>
               <p className="text-sm text-zinc-400 max-w-sm mx-auto">
@@ -351,82 +347,82 @@ const MyWebsites = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}
-                  className="rounded-[18px] bg-[#131318] border border-[#27272A] hover:border-[#22C55E]/30 p-6 flex flex-col justify-between gap-6 transition-all duration-200 shadow-sm hover:shadow-lg group"
+                  className="rounded-[18px] bg-[#131318] border border-[#27272A] hover:border-[#22C55E]/30 p-6 flex flex-col justify-between gap-5 transition-all duration-200 shadow-sm hover:shadow-lg group"
                 >
-                  {/* Top Row: Name, Domain & Large Status Badge */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
+                  {/* Top Row: Name, Domain & Large Status Badge with Proper Spacing */}
+                  <div className="flex items-start justify-between gap-3 sm:gap-4">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-10 h-10 rounded-[14px] bg-[#27272A] flex items-center justify-center text-[#22C55E] shrink-0 group-hover:scale-105 transition-transform">
                         <Globe className="w-5 h-5" />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         {/* Clicking card name sets active context and navigates to Studio */}
                         <button
                           onClick={() => handleOpenStudio(site)}
-                          className="font-heading font-bold text-base text-white hover:text-[#22C55E] transition-colors truncate block text-left cursor-pointer"
+                          title={site.domain}
+                          className="font-bold text-base text-white hover:text-[#22C55E] transition-colors truncate block text-left w-full cursor-pointer"
                         >
                           {site.domain}
                         </button>
-                        <p className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate">
+                        <p className="text-xs text-zinc-400 mt-0.5 truncate">
                           tenant_{site.id}
                         </p>
                       </div>
                     </div>
 
-                    {/* Large Status Badge */}
+                    {/* Large Status Badge — only icon/tick mark, no redundant dot */}
                     <div
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border shrink-0 ${badge.color}`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${badge.dot}`} />
-                      <BadgeIcon className="w-3.5 h-3.5" />
+                      <BadgeIcon className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />
                       <span>{badge.label}</span>
                     </div>
                   </div>
 
                   {/* Metadata Row: Last scan time & Content Block count */}
                   <div className="grid grid-cols-2 gap-4 py-3 px-4 rounded-[14px] bg-[#09090B] border border-[#27272A]/70">
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
-                        <Clock className="w-3 h-3 text-zinc-400" /> Last Scan
+                        <Clock className="w-3 h-3 text-zinc-400 shrink-0" /> Last Scan
                       </span>
-                      <p className="text-xs font-mono text-zinc-300 truncate">
+                      <p className="text-xs font-medium text-zinc-200 truncate">
                         {formatTimestamp(lastCrawl)}
                       </p>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider flex items-center gap-1.5">
-                        <Layers className="w-3 h-3 text-zinc-400" /> Content Blocks
+                        <Layers className="w-3 h-3 text-zinc-400 shrink-0" /> Content Blocks
                       </span>
-                      <p className="text-xs font-mono text-zinc-300">
+                      <p className="text-xs font-medium text-zinc-200 truncate">
                         {chunkCount} content blocks
                       </p>
                     </div>
                   </div>
 
-                  {/* Bottom: Quick Action Buttons */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-[#27272A]/70">
+                  {/* Bottom: Quick Action Buttons — Clean, un-cramped with whitespace-nowrap */}
+                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#27272A]/70">
                     {/* 1. Scan Website */}
                     <button
                       onClick={() => handleCrawlNow(site)}
                       disabled={isCrawling}
                       title="Trigger indexing scan now"
-                      className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                      className="flex-1 min-w-[120px] h-9 px-3 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-sm"
                     >
                       {isCrawling ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-4 h-4 animate-spin text-[#22C55E] shrink-0" />
                       ) : (
-                        <Play className="w-3.5 h-3.5 text-[#22C55E]" />
+                        <Play className="w-4 h-4 text-[#22C55E] fill-[#22C55E] shrink-0" />
                       )}
-                      <span>Scan Website</span>
+                      <span>{isCrawling ? 'Scanning...' : 'Scan Website'}</span>
                     </button>
 
                     {/* 2. Scan History */}
                     <button
                       onClick={() => handleViewLogs(site)}
                       title="View live & historical scan history"
-                      className="h-9 px-2 rounded-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="flex-1 min-w-[110px] h-9 px-3 rounded-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
                     >
-                      <Activity className="w-3.5 h-3.5" />
+                      <Activity className="w-3.5 h-3.5 shrink-0" />
                       <span>Scan History</span>
                     </button>
 
@@ -434,9 +430,9 @@ const MyWebsites = () => {
                     <button
                       onClick={() => handleOpenStudio(site)}
                       title="Open in Chatbot Studio"
-                      className="h-9 px-2 rounded-[10px] bg-[#22C55E]/15 hover:bg-[#22C55E]/25 text-[#22C55E] border border-[#22C55E]/30 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="flex-1 min-w-[85px] h-9 px-3 rounded-[10px] bg-[#22C55E]/15 hover:bg-[#22C55E]/25 text-[#22C55E] border border-[#22C55E]/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
                     >
-                      <Bot className="w-3.5 h-3.5" />
+                      <Bot className="w-3.5 h-3.5 shrink-0" />
                       <span>Studio</span>
                     </button>
 
@@ -444,23 +440,22 @@ const MyWebsites = () => {
                     <button
                       onClick={() => handleOpenAnalytics(site)}
                       title="View query & token analytics"
-                      className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="flex-1 min-w-[85px] h-9 px-3 rounded-[10px] bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
                     >
-                      <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
+                      <BarChart3 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                       <span>Analytics</span>
                     </button>
 
-                    {/* 5. Settings */}
+                    {/* 5. Settings / Edit */}
                     <button
                       onClick={() => {
                         setEditSite(site);
                         setEditDomain(site.domain);
                       }}
                       title="Edit website domain or configuration"
-                      className="h-9 px-2 rounded-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="h-9 w-9 shrink-0 rounded-[10px] bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
                     >
-                      <SettingsIcon className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>Settings</span>
+                      <SettingsIcon className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </motion.div>
