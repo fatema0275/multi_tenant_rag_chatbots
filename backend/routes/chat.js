@@ -494,23 +494,31 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
 
   // 5. Stage 3: Generate Answer with Groq LLM
   const contextPassages = passingChunks.map((c, i) =>
-    `[Source ${i + 1}] ${c.page_title ? `(Page: ${c.page_title}) ` : ''}${c.content}`
+    `[Context ${i + 1}] ${c.page_title ? `(Page: ${c.page_title}) ` : ''}${c.content}`
   ).join('\n\n');
-  const systemPrompt = `You are a helpful AI assistant for this website. Your job is to answer questions using ONLY the information found in the context passages provided below.
 
-Guidelines:
-- Answer directly and clearly based on what the context says.
-- If the context contains lists, tables, or structured data, present it clearly.
-- If the context does not contain enough information to answer, say: "I don't have enough information to answer that."
-- Do NOT add information from outside the context.
-- Do NOT say you cannot answer if the context clearly covers the topic.`;
-  const userPrompt = `Context passages from this website's knowledge base:
+  const systemPrompt = `You are a helpful, knowledgeable, and professional AI assistant representing this website. Your job is to answer visitor questions clearly, accurately, and conversationally using ONLY the verified context passages provided below.
+
+Response Guidelines:
+1. Tone & Structure:
+   - For basic or overview questions (such as "what is [Company]?", "who are you?", "tell me about your services", "what do you do?"):
+     * Begin with a welcoming, crisp 1-2 sentence definition or overview.
+     * When listing services, key capabilities, or offerings, present them as clean bullet points with EACH bullet on its own new line (using "- ").
+     * Mention essential info (like headquarters, founded year, or primary focus) naturally.
+   - Separate distinct topics or paragraphs with double line breaks for easy readability in a compact chat window.
+   - Avoid run-on sentences or cramming multiple list items together on the same line.
+2. Grounding & Boundaries:
+   - Answer strictly using the verified context passages. Do not invent facts, speculate, or mention external information.
+   - Never output bracketed source markers like "[Context 1]" or "[Source 1]" in your final answer text.
+   - If the context does not contain enough information to answer, state politely: "I don't have enough verified information on that topic in our website knowledge base. Please contact our support team for more details."`;
+
+  const userPrompt = `Context passages from this website:
 
 ${contextPassages}
 
-User question: ${query}
+Visitor question: ${query}
 
-Answer:`;
+Cleanly formatted answer:`;
 
   let generatedAnswer = null;
   const callGroq = async () => {
@@ -581,7 +589,31 @@ Answer:`;
     console.warn('[Chat Stage 4] NLI service unavailable (non-blocking):', err.message);
   }
 
-  // 7. Stage 5: Respond Success & Async Log
+  // 7. Determine whether citation links should be attached:
+  // - Omit sources for broad overview, introductory, or basic factual questions ("what is X", "who are you", "what do you do", "tell me about", greetings) to prevent link clutter on the host page.
+  // - Only provide sources if:
+  //   1) The visitor explicitly asks for links/sources/documentation/pages (e.g. "where can I read your policy", "link to pricing", "where is documentation").
+  //   2) The query is a deep specific question where chunks have high similarity (>= 0.65).
+  const isExplicitLinkRequest = /(link|url|source|where can i (find|read|see|download)|page|documentation|docs|whitepaper|pdf|policy|terms|pricing|contact)/i.test(query);
+
+  const isBasicOrOverview = /^(what is|who is|who are|tell me about|what does|describe|overview of|summary of|what do you do|what are your services|services offered|who founded|when was|where is your office|where are you located)/i.test(query.trim().toLowerCase());
+
+  let sourcesToReturn = [];
+  if (isExplicitLinkRequest) {
+    sourcesToReturn = passingChunks.slice(0, 2).map(c => ({
+      chunk_id: c.id,
+      similarity: parseFloat(c.similarity)
+    }));
+  } else if (!isBasicOrOverview) {
+    // Only return top relevant chunks if they have high similarity
+    const confidentChunks = passingChunks.filter(c => parseFloat(c.similarity) >= 0.65);
+    sourcesToReturn = confidentChunks.slice(0, 2).map(c => ({
+      chunk_id: c.id,
+      similarity: parseFloat(c.similarity)
+    }));
+  }
+
+  // 8. Stage 5: Respond Success & Async Log
   const latencyMs = Date.now() - startTime;
   logQueryAsync({
     tenantId: effectiveTenantUuid,
@@ -598,10 +630,7 @@ Answer:`;
 
   return res.status(200).json({
     answer: generatedAnswer,
-    sources: passingChunks.map(c => ({
-      chunk_id: c.id,
-      similarity: parseFloat(c.similarity)
-    })),
+    sources: sourcesToReturn,
     verified: true
   });
 });

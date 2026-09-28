@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { useActiveWebsite } from '../context/ActiveWebsiteContext';
 import { triggerCrawl } from '../store/websiteSlice';
 import WidgetLivePreview from '../components/ui/WidgetLivePreview';
@@ -36,9 +37,14 @@ import {
 } from 'lucide-react';
 
 const ChatbotStudio = () => {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const token = useSelector((s) => s.auth.token);
   const { activeWebsite, websites, setActiveWebsiteId } = useActiveWebsite();
+
+  // Crawl & Readiness status
+  const crawlStatus = activeWebsite?.site?.crawl_status || activeWebsite?.crawl_status || 'pending';
+  const isCrawlCompleted = crawlStatus === 'completed' || crawlStatus === 'cancelled' || Boolean(activeWebsite?.tokens_used);
 
   // Studio Active Tab
   const [activeTab, setActiveTab] = useState('branding');
@@ -49,6 +55,7 @@ const ChatbotStudio = () => {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isCrawlStarting, setIsCrawlStarting] = useState(false);
 
   // Live Colors & Branding
   const [themeColor, setThemeColor] = useState('#22C55E');
@@ -139,18 +146,43 @@ const ChatbotStudio = () => {
       .finally(() => setLoadingConfig(false));
   }, [activeWebsite?.id, token]);
 
-  // Load sync crawl jobs
-  useEffect(() => {
-    if (!activeWebsite?.id || !token) return;
+  // Load sync crawl jobs helper
+  const loadSyncJobs = useCallback((websiteId) => {
+    if (!websiteId || !token) return;
     setLoadingSync(true);
-    fetch(`/api/websites/${activeWebsite.id}/crawl-jobs`, {
+    fetch(`/api/websites/${websiteId}/crawl-jobs`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setSyncJobs(Array.isArray(data) ? data : []))
       .catch(() => setSyncJobs([]))
       .finally(() => setLoadingSync(false));
-  }, [activeWebsite?.id, token]);
+  }, [token]);
+
+  // Load sync crawl jobs
+  useEffect(() => {
+    if (activeWebsite?.id) {
+      loadSyncJobs(activeWebsite.id);
+    }
+  }, [activeWebsite?.id, loadSyncJobs]);
+
+  const handleCrawlSite = async () => {
+    if (!activeWebsite?.id) return;
+    setIsCrawlStarting(true);
+    try {
+      const result = await dispatch(triggerCrawl({ websiteId: activeWebsite.id }));
+      if (triggerCrawl.fulfilled.match(result)) {
+        toast.success(result.payload?.message || `Scan started for ${activeWebsite.domain}`);
+        loadSyncJobs(activeWebsite.id);
+      } else {
+        toast.error(result.payload || 'Failed to start scan');
+      }
+    } catch {
+      toast.error('Failed to trigger scan');
+    } finally {
+      setIsCrawlStarting(false);
+    }
+  };
 
   // Save knowledge to local storage on change
   useEffect(() => {
@@ -283,11 +315,6 @@ const ChatbotStudio = () => {
     if (triggerCrawl.fulfilled.match(res)) {
       toast.success('Indexed content update scan started!');
       loadSyncJobs(activeWebsite.id);
-      fetch(`/api/websites/${activeWebsite.id}/crawl-jobs`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => (r.ok ? r.json() : []))
-        .then((d) => setSyncJobs(Array.isArray(d) ? d : []));
     } else {
       toast.error(res.payload || 'Failed to start sync crawl.');
     }
@@ -382,8 +409,6 @@ const ChatbotStudio = () => {
       </div>
     );
   }
-
-  const crawlStatus = activeWebsite?.site?.crawl_status || activeWebsite?.crawl_status || 'pending';
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row h-full w-full min-h-0 bg-[#09090B] text-white overflow-hidden">

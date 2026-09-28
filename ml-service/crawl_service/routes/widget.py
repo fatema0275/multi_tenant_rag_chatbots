@@ -158,17 +158,19 @@ def public_widget_query():
             for s in raw_sources:
                 cid = s.get("chunk_id")
                 chunk_info = chunk_map.get(cid, {})
-                page_url = chunk_info.get("page_url") or s.get("page_url") or ""
+                page_url = (chunk_info.get("page_url") or s.get("page_url") or "").strip()
                 page_title = chunk_info.get("page_title") or s.get("page_title") or "Source"
                 dom_selector = chunk_info.get("dom_selector") or s.get("dom_selector")
                 text_snippet = chunk_info.get("text_snippet") or s.get("text_snippet")
 
+                if not page_url:
+                    continue
+
                 # Normalize URL for deduplication
-                norm_url = page_url.split("?")[0].split("#")[0].rstrip("/").lower() if page_url else ""
-                is_top_for_page = False
-                if norm_url and norm_url not in seen_page_urls:
-                    seen_page_urls.add(norm_url)
-                    is_top_for_page = True
+                norm_url = page_url.split("?")[0].split("#")[0].rstrip("/").lower()
+                if not norm_url or norm_url in seen_page_urls:
+                    continue
+                seen_page_urls.add(norm_url)
 
                 # Check if page_url domain matches website's registered domain
                 page_host = clean_host(page_url)
@@ -176,8 +178,8 @@ def public_widget_query():
                     page_host and reg_host and (page_host == reg_host or page_host.endswith("." + reg_host))
                 )
 
-                # Only include dom_selector for top retrieved chunk per unique page_url when domains match
-                effective_dom_selector = dom_selector if (is_top_for_page and domain_matches) else None
+                # Only include dom_selector when domains match
+                effective_dom_selector = dom_selector if domain_matches else None
 
                 enriched_sources.append({
                     "chunk_id": cid,
@@ -187,6 +189,9 @@ def public_widget_query():
                     "dom_selector": effective_dom_selector,
                     "text_snippet": text_snippet,
                 })
+
+                if len(enriched_sources) >= 2:
+                    break
 
             return jsonify({
                 "response": data.get("answer", "No answer generated."),

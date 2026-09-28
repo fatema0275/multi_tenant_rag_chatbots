@@ -259,6 +259,35 @@
         border-bottom-left-radius: 4px !important;
       }
 
+      .sm-msg-bot p.sm-msg-para {
+        margin: 0 0 8px 0 !important;
+        line-height: 1.55 !important;
+      }
+
+      .sm-msg-bot p.sm-msg-para:last-child {
+        margin-bottom: 0 !important;
+      }
+
+      .sm-msg-bot ul.sm-msg-list {
+        margin: 6px 0 8px 18px !important;
+        padding: 0 !important;
+        list-style-type: disc !important;
+      }
+
+      .sm-msg-bot ul.sm-msg-list li {
+        margin-bottom: 4px !important;
+        line-height: 1.45 !important;
+      }
+
+      .sm-msg-bot strong {
+        font-weight: 600 !important;
+        color: inherit !important;
+      }
+
+      .sm-msg-bot em {
+        font-style: italic !important;
+      }
+
       .sm-msg-user {
         align-self: flex-end !important;
         background-color: ${theme} !important;
@@ -576,10 +605,15 @@
 
         var botMsgEl = document.createElement('div');
         botMsgEl.className = 'sm-msg sm-msg-bot';
-        botMsgEl.textContent = (data && data.response) || 'No response generated.';
+        var textContent = (data && data.response) || 'No response generated.';
+        botMsgEl.innerHTML = formatMarkdown(textContent);
 
-        // Render sources section if sources exist (Step 4 & Step 5)
-        if (data && data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
+        // Render sources section ONLY if valid non-empty sources exist
+        var validSources = (data && data.sources && Array.isArray(data.sources))
+          ? data.sources.filter(function (s) { return s && s.page_url && String(s.page_url).trim().length > 0; })
+          : [];
+
+        if (validSources.length > 0) {
           var sourcesContainer = document.createElement('div');
           sourcesContainer.className = 'sm-sources';
 
@@ -588,9 +622,7 @@
           sourcesLabel.textContent = 'Sources';
           sourcesContainer.appendChild(sourcesLabel);
 
-          data.sources.forEach(function (src) {
-            if (!src || !src.page_url) return;
-
+          validSources.forEach(function (src) {
             var samePage = isSamePage(src.page_url);
             var itemEl = document.createElement('div');
             itemEl.className = 'sm-source-item' + (samePage ? ' sm-source-same-page' : '');
@@ -607,7 +639,6 @@
             itemEl.appendChild(linkEl);
 
             // If it's on the same page, include the visual pointer highlight button!
-            // If it's on a different page, ONLY the link is required.
             if (samePage) {
               var btnEl = document.createElement('button');
               btnEl.className = 'sm-source-btn';
@@ -671,6 +702,70 @@
         isSending = false;
         sendBtn.disabled = false;
       });
+  }
+
+  function formatMarkdown(rawText) {
+    if (!rawText) return '';
+
+    // Normalize inline hyphen bullets (e.g. "offering: - Item 1 - Item 2") to separate lines
+    var cleaned = String(rawText)
+      .replace(/:\s*-\s+/g, ':\n- ')
+      .replace(/([^\n])\s+-\s+([A-Z0-9])/g, '$1\n- $2');
+
+    // 1. Escape HTML special characters to prevent any XSS
+    var escaped = cleaned
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    // 2. Bold: **text** or __text__
+    escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+    // 3. Italic: *text* or _text_
+    escaped = escaped.replace(/\*([^\*\n]+?)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/_([^_\n]+?)_/g, '<em>$1</em>');
+
+    // 4. Inline code: `code`
+    escaped = escaped.replace(/`([^`\n]+?)`/g, '<code style="background:rgba(0,0,0,0.06);padding:2px 4px;border-radius:3px;font-size:12px;font-family:monospace;">$1</code>');
+
+    // 5. Line-by-line parsing for lists and paragraphs
+    var lines = escaped.split('\n');
+    var inList = false;
+    var out = [];
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) {
+        if (inList) {
+          out.push('</ul>');
+          inList = false;
+        }
+        continue;
+      }
+
+      var bulletMatch = line.match(/^[-*•]\s+(.*)$/);
+      if (bulletMatch) {
+        if (!inList) {
+          out.push('<ul class="sm-msg-list">');
+          inList = true;
+        }
+        out.push('<li>' + bulletMatch[1] + '</li>');
+      } else {
+        if (inList) {
+          out.push('</ul>');
+          inList = false;
+        }
+        out.push('<p class="sm-msg-para">' + line + '</p>');
+      }
+    }
+    if (inList) {
+      out.push('</ul>');
+    }
+
+    return out.length > 0 ? out.join('') : '<p class="sm-msg-para">' + escaped + '</p>';
   }
 
   // ========================================================================= //
