@@ -83,38 +83,14 @@ const ChatbotStudio = () => {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Manual Knowledge
-  const [knowledgeList, setKnowledgeList] = useState(() => {
-    const saved = localStorage.getItem(`sitemind_knowledge_${activeWebsite?.id}`);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (_) {}
-    }
-    return [
-      {
-        id: 1,
-        title: 'Business Hours',
-        content: 'Monday - Friday: 9:00 AM - 6:00 PM EST. Weekend support via email.',
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        title: 'Pricing & Plans',
-        content: 'Free starter tier available with 1,000 monthly tokens. Pro starts at $49/month.',
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 3,
-        title: 'Contact Information',
-        content: 'Support email: support@sitemind.io. Phone: +1 (800) 555-0199.',
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-  });
+  const [knowledgeList, setKnowledgeList] = useState([]);
   const [knowledgeSearch, setKnowledgeSearch] = useState('');
   const [editingKnowledge, setEditingKnowledge] = useState(null);
   const [knowledgeForm, setKnowledgeForm] = useState({ title: '', content: '' });
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
+  const [customServerUrl, setCustomServerUrl] = useState(() => {
+    return (typeof window !== 'undefined' && localStorage.getItem('sitemind_custom_server_url')) || '';
+  });
 
   // Load configuration for active website
   useEffect(() => {
@@ -159,12 +135,24 @@ const ChatbotStudio = () => {
       .finally(() => setLoadingSync(false));
   }, [token]);
 
-  // Load sync crawl jobs
+  // Load manual knowledge entries helper
+  const loadManualContent = useCallback((websiteId) => {
+    if (!websiteId || !token) return;
+    fetch(`/api/websites/${websiteId}/manual-content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setKnowledgeList(Array.isArray(data) ? data : []))
+      .catch(() => setKnowledgeList([]));
+  }, [token]);
+
+  // Load sync crawl jobs & manual knowledge
   useEffect(() => {
     if (activeWebsite?.id) {
       loadSyncJobs(activeWebsite.id);
+      loadManualContent(activeWebsite.id);
     }
-  }, [activeWebsite?.id, loadSyncJobs]);
+  }, [activeWebsite?.id, loadSyncJobs, loadManualContent]);
 
   const handleCrawlSite = async () => {
     if (!activeWebsite?.id) return;
@@ -292,13 +280,15 @@ const ChatbotStudio = () => {
 
   const baseUrl =
     typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
       ? `${window.location.protocol}//${window.location.hostname}:5000`
       : window.location.origin;
 
+  const effectiveBaseUrl = (customServerUrl.trim() || baseUrl).replace(/\/+$/, '');
+
   const embedScriptTag = config?.embed_token
-    ? `<script src="${baseUrl}/static/widget-v1.js" data-token="${config.embed_token}"></script>`
-    : `<script src="${baseUrl}/static/widget-v1.js" data-token="YOUR_EMBED_TOKEN"></script>`;
+    ? `<script src="${effectiveBaseUrl}/static/widget-v1.js" data-token="${config.embed_token}"></script>`
+    : `<script src="${effectiveBaseUrl}/static/widget-v1.js" data-token="YOUR_EMBED_TOKEN"></script>`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(embedScriptTag);
@@ -321,40 +311,58 @@ const ChatbotStudio = () => {
   };
 
   // Knowledge list actions
-  const handleSaveKnowledge = (e) => {
+  const handleSaveKnowledge = async (e) => {
     e.preventDefault();
-    if (!knowledgeForm.title.trim() || !knowledgeForm.content.trim()) return;
+    if (!knowledgeForm.title.trim() || !knowledgeForm.content.trim() || !activeWebsite?.id) return;
 
-    if (editingKnowledge) {
-      setKnowledgeList((prev) =>
-        prev.map((item) =>
-          item.id === editingKnowledge.id
-            ? { ...item, ...knowledgeForm, updatedAt: new Date().toISOString() }
-            : item
-        )
-      );
-      toast.success('Knowledge entry updated');
-    } else {
-      const newEntry = {
-        id: Date.now(),
-        title: knowledgeForm.title.trim(),
-        content: knowledgeForm.content.trim(),
-        updatedAt: new Date().toISOString(),
-      };
-      setKnowledgeList((prev) => [newEntry, ...prev]);
-      toast.success('Manual knowledge entry added');
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/websites/${activeWebsite.id}/manual-content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: knowledgeForm.title.trim(),
+          content: knowledgeForm.content.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save manual knowledge');
+      } else {
+        setKnowledgeList((prev) => [data, ...prev.filter((k) => k.id !== data.id)]);
+        toast.success('Manual knowledge indexed & saved!');
+        setEditingKnowledge(null);
+        setKnowledgeForm({ title: '', content: '' });
+        setShowKnowledgeModal(false);
+      }
+    } catch {
+      toast.error('Network error saving manual knowledge');
+    } finally {
+      setSaving(false);
     }
-
-    setEditingKnowledge(null);
-    setKnowledgeForm({ title: '', content: '' });
-    setShowKnowledgeModal(false);
   };
 
-  const handleDeleteKnowledge = () => {
-    if (!deleteKnowledgeId) return;
-    setKnowledgeList((prev) => prev.filter((k) => k.id !== deleteKnowledgeId));
-    setDeleteKnowledgeId(null);
-    toast.success('Knowledge entry removed');
+  const handleDeleteKnowledge = async () => {
+    if (!deleteKnowledgeId || !activeWebsite?.id) return;
+    try {
+      const res = await fetch(`/api/websites/${activeWebsite.id}/manual-content/${deleteKnowledgeId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        toast.error('Failed to remove knowledge entry');
+      } else {
+        setKnowledgeList((prev) => prev.filter((k) => k.id !== deleteKnowledgeId));
+        toast.success('Knowledge entry removed from database and RAG index');
+      }
+    } catch {
+      toast.error('Network error deleting knowledge entry');
+    } finally {
+      setDeleteKnowledgeId(null);
+    }
   };
 
   const filteredKnowledge = useMemo(() => {
@@ -440,11 +448,10 @@ const ChatbotStudio = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-left transition-all cursor-pointer ${
-                    isActive
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-left transition-all cursor-pointer ${isActive
                       ? 'border-l-4 border-[#22C55E] bg-[#22C55E]/10 text-white pl-[10px]'
                       : 'text-zinc-400 hover:text-white hover:bg-[#27272A]/30 border-l-4 border-transparent'
-                  }`}
+                    }`}
                 >
                   <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#22C55E]' : 'text-zinc-500'}`} />
                   <span>{tab.label}</span>
@@ -482,11 +489,10 @@ const ChatbotStudio = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  isActive
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${isActive
                     ? 'bg-[#22C55E] text-white'
                     : 'bg-[#131318] text-zinc-400 hover:text-white border border-[#27272A]'
-                }`}
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
@@ -636,11 +642,10 @@ const ChatbotStudio = () => {
                 <button
                   type="button"
                   onClick={() => setOverridesLocked(!overridesLocked)}
-                  className={`px-2.5 py-1 rounded-[8px] text-[11px] font-semibold transition-all cursor-pointer shrink-0 ${
-                    overridesLocked
+                  className={`px-2.5 py-1 rounded-[8px] text-[11px] font-semibold transition-all cursor-pointer shrink-0 ${overridesLocked
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       : 'bg-zinc-800 text-zinc-300 border border-[#27272A]'
-                  }`}
+                    }`}
                 >
                   {overridesLocked ? 'Locked' : 'Unlocked'}
                 </button>
@@ -728,11 +733,10 @@ const ChatbotStudio = () => {
                 <button
                   type="button"
                   onClick={() => setWidgetPosition('bottom-right')}
-                  className={`py-3 px-4 rounded-[12px] text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    widgetPosition === 'bottom-right'
+                  className={`py-3 px-4 rounded-[12px] text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${widgetPosition === 'bottom-right'
                       ? 'bg-[#22C55E]/15 border border-[#22C55E]/40 text-[#22C55E]'
                       : 'bg-[#09090B] border border-[#27272A] text-zinc-400 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-current" />
                   Bottom Right (Standard)
@@ -740,11 +744,10 @@ const ChatbotStudio = () => {
                 <button
                   type="button"
                   onClick={() => setWidgetPosition('bottom-left')}
-                  className={`py-3 px-4 rounded-[12px] text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    widgetPosition === 'bottom-left'
+                  className={`py-3 px-4 rounded-[12px] text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${widgetPosition === 'bottom-left'
                       ? 'bg-[#22C55E]/15 border border-[#22C55E]/40 text-[#22C55E]'
                       : 'bg-[#09090B] border border-[#27272A] text-zinc-400 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-current" />
                   Bottom Left
@@ -832,6 +835,25 @@ const ChatbotStudio = () => {
                   <code className="text-[#22C55E] font-mono text-xs break-all">
                     {embedScriptTag}
                   </code>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-[#27272A]">
+                  <label className="text-xs font-semibold text-zinc-300">
+                    Backend / Tunnel Server URL (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={customServerUrl}
+                    onChange={(e) => {
+                      setCustomServerUrl(e.target.value);
+                      localStorage.setItem('sitemind_custom_server_url', e.target.value);
+                    }}
+                    placeholder="e.g. https://your-server.com or https://xxxx.ngrok-free.app"
+                    className="w-full h-9 px-3 rounded-[10px] bg-[#09090B] border border-[#27272A] text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22C55E]"
+                  />
+                  <p className="text-[11px] text-zinc-500 leading-normal">
+                    Hosted sites on HTTPS (such as Vercel) block <code className="text-zinc-400">http://localhost:5000</code> due to browser Mixed Content security. If embedding on a live remote site, provide your public HTTPS tunnel or deployed backend URL above.
+                  </p>
                 </div>
               </>
             )}
@@ -1023,13 +1045,12 @@ const ChatbotStudio = () => {
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`w-2 h-2 rounded-full ${
-                              job.status === 'completed'
+                            className={`w-2 h-2 rounded-full ${job.status === 'completed'
                                 ? 'bg-[#22C55E]'
                                 : job.status === 'running'
-                                ? 'bg-blue-400 animate-pulse'
-                                : 'bg-amber-400'
-                            }`}
+                                  ? 'bg-blue-400 animate-pulse'
+                                  : 'bg-amber-400'
+                              }`}
                           />
                           <span className="font-semibold text-white uppercase text-[10px] tracking-wider">
                             {job.status}

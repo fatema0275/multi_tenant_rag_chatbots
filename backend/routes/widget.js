@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const BRIDGE_URL = process.env.CRAWL_BRIDGE_URL || 'http://localhost:8001';
+const BRIDGE_URL = (process.env.CRAWL_BRIDGE_URL || 'http://127.0.0.1:8001').replace('localhost', '127.0.0.1');
 
 async function safeParseResponse(response) {
   const contentType = response.headers.get('content-type') || '';
@@ -23,12 +23,23 @@ async function safeParseResponse(response) {
 router.get('/config', async (req, res) => {
   try {
     const token = req.query.token || '';
-    const response = await fetch(`${BRIDGE_URL}/api/widget/config?token=${encodeURIComponent(token)}`, {
-      method: 'GET',
-      headers: {
-        'X-Forwarded-For': req.ip || req.connection.remoteAddress,
-      },
-    });
+    let response;
+    try {
+      response = await fetch(`${BRIDGE_URL}/api/widget/config?token=${encodeURIComponent(token)}`, {
+        method: 'GET',
+        headers: {
+          'X-Forwarded-For': req.ip || req.connection.remoteAddress,
+        },
+      });
+    } catch (firstErr) {
+      await new Promise(r => setTimeout(r, 200));
+      response = await fetch(`${BRIDGE_URL}/api/widget/config?token=${encodeURIComponent(token)}`, {
+        method: 'GET',
+        headers: {
+          'X-Forwarded-For': req.ip || req.connection.remoteAddress,
+        },
+      });
+    }
 
     const data = await safeParseResponse(response);
     return res.status(response.status).json(data);
@@ -44,14 +55,28 @@ router.get('/config', async (req, res) => {
  */
 router.post('/query', async (req, res) => {
   try {
-    const response = await fetch(`${BRIDGE_URL}/api/widget/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Forwarded-For': req.ip || req.connection.remoteAddress,
-      },
-      body: JSON.stringify(req.body),
-    });
+    let response;
+    try {
+      response = await fetch(`${BRIDGE_URL}/api/widget/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': req.ip || req.connection.remoteAddress,
+        },
+        body: JSON.stringify(req.body),
+      });
+    } catch (firstErr) {
+      console.warn('[widgetRoute] Retrying forwarding POST /widget/query:', firstErr.message);
+      await new Promise(r => setTimeout(r, 300));
+      response = await fetch(`${BRIDGE_URL}/api/widget/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': req.ip || req.connection.remoteAddress,
+        },
+        body: JSON.stringify(req.body),
+      });
+    }
 
     const data = await safeParseResponse(response);
     return res.status(response.status).json(data);

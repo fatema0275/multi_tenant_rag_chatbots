@@ -251,6 +251,125 @@ router.get('/:id/crawl-jobs', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/websites/:id/manual-content
+ * Returns list of manual knowledge base entries for the website
+ */
+router.get('/:id/manual-content', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) return res.status(400).json({ error: 'Invalid website ID' });
+
+    const { Website, sequelize } = require('../models');
+    const website = await Website.findOne({ where: { id: websiteId, user_id: req.userId } });
+    if (!website) return res.status(403).json({ error: 'Website not found or unauthorized' });
+
+    const [rows] = await sequelize.query(
+      `SELECT id, website_id, title, content_text AS content, created_at AS "createdAt", created_at AS "updatedAt"
+       FROM manual_content
+       WHERE website_id = :websiteId
+       ORDER BY id DESC`,
+      { replacements: { websiteId } }
+    );
+
+    return res.status(200).json(rows || []);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/websites/:id/manual-content
+ * Adds manual content entry and indexes it into document_chunks for RAG retrieval
+ */
+router.post('/:id/manual-content', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) return res.status(400).json({ error: 'Invalid website ID' });
+
+    const { title, content } = req.body || {};
+    if (!title || !title.trim() || !content || !content.trim()) {
+      return res.status(400).json({ error: 'Title and content are required' });
+    }
+
+    const { Website, sequelize } = require('../models');
+    const website = await Website.findOne({ where: { id: websiteId, user_id: req.userId } });
+    if (!website) return res.status(403).json({ error: 'Website not found or unauthorized' });
+
+    const cleanTitle = title.trim();
+    const cleanContent = content.trim();
+
+    // 1. Insert into manual_content table
+    const [insertResult] = await sequelize.query(
+      `INSERT INTO manual_content (website_id, added_by_user_id, title, content_text, created_at)
+       VALUES (:websiteId, :userId, :title, :content, NOW())
+       RETURNING id, website_id, title, content_text AS content, created_at AS "createdAt", created_at AS "updatedAt"`,
+      {
+        replacements: {
+          websiteId,
+          userId: req.userId,
+          title: cleanTitle,
+          content: cleanContent,
+        }
+      }
+    );
+
+    const newRow = insertResult[0];
+
+    // 2. Index into document_chunks with embeddings for immediate RAG retrieval
+    try {
+      const { storePageChunks } = require('../services/knowledgeBase');
+      await storePageChunks({
+        siteId: website.site_id,
+        websiteId: website.id,
+        pageUrl: `https://${website.domain}/#manual-${newRow.id}`,
+        pageTitle: cleanTitle,
+        pageText: `${cleanTitle}:\n${cleanContent}`,
+        domSelector: null,
+      });
+      console.log(`[ManualContent] Indexed manual knowledge #${newRow.id} into document_chunks for site ${website.domain}`);
+    } catch (chunkErr) {
+      console.error(`[ManualContent] Error indexing manual content to document_chunks:`, chunkErr.message);
+    }
+
+    return res.status(201).json(newRow);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/websites/:id/manual-content/:contentId
+ * Removes manual content entry and associated document_chunks
+ */
+router.delete('/:id/manual-content/:contentId', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    const contentId = parseInt(req.params.contentId, 10);
+    if (isNaN(websiteId) || isNaN(contentId)) {
+      return res.status(400).json({ error: 'Invalid parameters' });
+    }
+
+    const { Website, sequelize } = require('../models');
+    const website = await Website.findOne({ where: { id: websiteId, user_id: req.userId } });
+    if (!website) return res.status(403).json({ error: 'Website not found or unauthorized' });
+
+    await sequelize.query(
+      `DELETE FROM manual_content WHERE id = :contentId AND website_id = :websiteId`,
+      { replacements: { contentId, websiteId } }
+    );
+
+    await sequelize.query(
+      `DELETE FROM document_chunks WHERE (website_id = :websiteId OR site_id = :siteId) AND page_url LIKE '%#manual-' || :contentId`,
+      { replacements: { websiteId, siteId: website.site_id, contentId: String(contentId) } }
+    );
+
+    return res.status(200).json({ status: 'ok', message: 'Manual knowledge entry removed' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
 
 

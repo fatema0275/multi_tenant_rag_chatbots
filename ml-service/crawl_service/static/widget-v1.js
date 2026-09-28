@@ -37,18 +37,82 @@
     logo_url: null,
     website_name: 'AI Support',
     domain: '',
+    position: 'bottom-right',
+    welcome_message: 'Hello! How can I help you today?',
+    placeholder_text: 'Type a message...',
   };
 
   var isOpen = false;
   var isSending = false;
   var shadowRoot = null;
   var containerEl = null;
-  var visualPointingSessionDisabled = false;
+
+  // Module-level messages array for persistent history
+  var messages = [];
+
+  // Session Token helper
+  function getSessionToken() {
+    if (!embedToken) return null;
+    var key = 'sitemind_session_' + embedToken;
+    var tok = null;
+    try {
+      tok = sessionStorage.getItem(key);
+      if (!tok) {
+        tok = 'sm_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+        sessionStorage.setItem(key, tok);
+      }
+    } catch (_) {}
+    return tok;
+  }
+
+  // Load chat history from sessionStorage
+  function loadHistory() {
+    if (!embedToken) {
+      messages = [
+        {
+          sender: 'bot',
+          text: config.welcome_message || 'Hello! How can I help you today?',
+          sources: [],
+          nav_links: [],
+        },
+      ];
+      return;
+    }
+    try {
+      var saved = sessionStorage.getItem('sitemind_history_' + embedToken);
+      if (saved) {
+        var parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          messages = parsed;
+          return;
+        }
+      }
+    } catch (_) {}
+
+    messages = [
+      {
+        sender: 'bot',
+        text: config.welcome_message || 'Hello! How can I help you today?',
+        sources: [],
+        nav_links: [],
+      },
+    ];
+  }
+
+  // Save chat history to sessionStorage
+  function saveHistory() {
+    if (!embedToken) return;
+    try {
+      sessionStorage.setItem('sitemind_history_' + embedToken, JSON.stringify(messages));
+    } catch (_) {}
+  }
 
   // Fetch public widget config from backend
   function fetchConfig() {
     if (!embedToken) {
+      loadHistory();
       initWidget();
+      checkUrlHighlightHash();
       return;
     }
 
@@ -67,12 +131,28 @@
           config.logo_url = data.logo_url || null;
           config.website_name = data.website_name || config.website_name;
           config.domain = data.domain || config.domain;
+
+          // Unpack widget_settings overrides
+          var ws = data.widget_settings || {};
+          if (typeof ws === 'string') {
+            try { ws = JSON.parse(ws); } catch (_) { ws = {}; }
+          }
+          if (ws && typeof ws === 'object') {
+            if (ws.chatbot_name) config.website_name = ws.chatbot_name;
+            if (ws.welcome_message) config.welcome_message = ws.welcome_message;
+            if (ws.placeholder_text) config.placeholder_text = ws.placeholder_text;
+            if (ws.position) config.position = ws.position;
+          }
         }
+        loadHistory();
         initWidget();
+        checkUrlHighlightHash();
       })
       .catch(function (err) {
         console.warn('[SiteMind Widget] Using fallback config due to:', err.message);
+        loadHistory();
         initWidget();
+        checkUrlHighlightHash();
       });
   }
 
@@ -89,10 +169,29 @@
     attachEventListeners();
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function renderWidget() {
     var theme = config.theme_color;
     var bg = config.background_color;
     var text = config.text_color;
+    var isLeft = config.position === 'bottom-left';
+
+    var launcherPosCss = isLeft
+      ? 'bottom: 20px !important; left: 20px !important; right: auto !important;'
+      : 'bottom: 20px !important; right: 20px !important; left: auto !important;';
+
+    var panelPosCss = isLeft
+      ? 'bottom: 90px !important; left: 20px !important; right: auto !important; transform-origin: bottom left !important;'
+      : 'bottom: 90px !important; right: 20px !important; left: auto !important; transform-origin: bottom right !important;';
 
     // Explicit CSS reset inside shadow root
     var css = `
@@ -107,8 +206,7 @@
 
       .sm-launcher {
         position: fixed !important;
-        bottom: 20px !important;
-        right: 20px !important;
+        ${launcherPosCss}
         width: 60px !important;
         height: 60px !important;
         border-radius: 50% !important;
@@ -138,8 +236,7 @@
 
       .sm-panel {
         position: fixed !important;
-        bottom: 90px !important;
-        right: 20px !important;
+        ${panelPosCss}
         width: 380px !important;
         max-width: calc(100vw - 40px) !important;
         height: 580px !important;
@@ -244,7 +341,7 @@
       }
 
       .sm-msg {
-        max-width: 82% !important;
+        max-width: 84% !important;
         padding: 12px 16px !important;
         border-radius: 14px !important;
         font-size: 13.5px !important;
@@ -377,6 +474,63 @@
         fill: #ffffff !important;
       }
 
+      /* Navigation Links Section */
+      .sm-nav-section {
+        margin-top: 10px !important;
+        padding-top: 8px !important;
+        border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+      }
+
+      .sm-nav-title {
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        color: ${text} !important;
+        opacity: 0.7 !important;
+      }
+
+      .sm-nav-list {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+      }
+
+      .sm-nav-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 8px !important;
+        padding: 6px 12px !important;
+        background-color: ${theme} !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        text-decoration: none !important;
+        transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+      }
+
+      .sm-nav-btn:hover {
+        transform: translateY(-1px) !important;
+        opacity: 0.92 !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18) !important;
+      }
+
+      .sm-nav-btn-icon {
+        width: 14px !important;
+        height: 14px !important;
+        stroke: currentColor !important;
+        stroke-width: 2.2 !important;
+      }
+
+      /* Sources Section */
       .sm-sources {
         margin-top: 8px !important;
         padding-top: 8px !important;
@@ -472,14 +626,10 @@
           <button class="sm-close-btn" id="sm-close-btn" aria-label="Close chat">&times;</button>
         </div>
 
-        <div class="sm-messages" id="sm-messages">
-          <div class="sm-msg sm-msg-bot">
-            Hello! How can I help you today?
-          </div>
-        </div>
+        <div class="sm-messages" id="sm-messages"></div>
 
         <div class="sm-input-row">
-          <input type="text" class="sm-input" id="sm-input" placeholder="Type a message..." />
+          <input type="text" class="sm-input" id="sm-input" placeholder="${escapeHtml(config.placeholder_text || 'Type a message...')}" />
           <button class="sm-send-btn" id="sm-send-btn" aria-label="Send message">
             <svg viewBox="0 0 24 24">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -490,6 +640,13 @@
     `;
 
     shadowRoot.innerHTML = html;
+
+    // Render persistent history messages
+    var messagesEl = shadowRoot.getElementById('sm-messages');
+    messages.forEach(function (msg) {
+      renderSingleMessage(messagesEl, msg);
+    });
+    messagesEl.scrollTop = messagesEl.scrollHeight;
 
     // Logo image error fallback to initial text
     var logoImg = shadowRoot.getElementById('sm-logo-img');
@@ -507,6 +664,118 @@
     }
   }
 
+  function renderSingleMessage(container, msg) {
+    var isUser = msg.sender === 'user';
+    var el = document.createElement('div');
+    el.className = 'sm-msg ' + (isUser ? 'sm-msg-user' : 'sm-msg-bot');
+
+    if (isUser) {
+      el.textContent = msg.text || '';
+    } else {
+      el.innerHTML = formatMarkdown(msg.text || '');
+
+      // Render Navigation Links (BUG 3)
+      if (msg.nav_links && Array.isArray(msg.nav_links) && msg.nav_links.length > 0) {
+        var navSection = document.createElement('div');
+        navSection.className = 'sm-nav-section';
+
+        var navTitle = document.createElement('div');
+        navTitle.className = 'sm-nav-title';
+        navTitle.textContent = 'Go to page';
+        navSection.appendChild(navTitle);
+
+        var navList = document.createElement('div');
+        navList.className = 'sm-nav-list';
+
+        msg.nav_links.forEach(function (link) {
+          if (!link || !link.url) return;
+          var btn = document.createElement('button');
+          btn.className = 'sm-nav-btn';
+          btn.innerHTML = `
+            <span>${escapeHtml(link.label || 'Visit Page')}</span>
+            <svg class="sm-nav-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          `;
+
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isSameDomain(link.url)) {
+              window.location.href = link.url;
+            } else {
+              window.open(link.url, '_blank', 'noopener,noreferrer');
+            }
+          });
+
+          navList.appendChild(btn);
+        });
+
+        navSection.appendChild(navList);
+        el.appendChild(navSection);
+      }
+
+      // Render Sources Section (BUG 1)
+      var validSources = (msg.sources && Array.isArray(msg.sources))
+        ? msg.sources.filter(function (s) { return s && s.page_url && String(s.page_url).trim().length > 0; })
+        : [];
+
+      if (validSources.length > 0) {
+        var sourcesContainer = document.createElement('div');
+        sourcesContainer.className = 'sm-sources';
+
+        var sourcesLabel = document.createElement('div');
+        sourcesLabel.className = 'sm-sources-label';
+        sourcesLabel.textContent = 'Sources';
+        sourcesContainer.appendChild(sourcesLabel);
+
+        validSources.forEach(function (src) {
+          var itemEl = document.createElement('div');
+          itemEl.className = 'sm-source-item';
+
+          var linkEl = document.createElement('a');
+          linkEl.className = 'sm-source-link';
+          linkEl.href = src.page_url;
+          var displayTitle = src.page_title || src.page_url;
+          linkEl.title = displayTitle;
+          linkEl.textContent = displayTitle;
+          linkEl.target = '_blank';
+          linkEl.rel = 'noopener noreferrer';
+
+          itemEl.appendChild(linkEl);
+
+          // Highlight button for ALL sources (navigates & highlights)
+          var btnEl = document.createElement('button');
+          btnEl.className = 'sm-source-btn';
+          btnEl.title = 'Highlight on page';
+          btnEl.setAttribute('aria-label', 'Highlight on page');
+          btnEl.innerHTML = `
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="8" stroke-width="2"/>
+              <circle cx="12" cy="12" r="3" stroke-width="2"/>
+              <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
+            </svg>
+            Highlight
+          `;
+
+          btnEl.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSourceHighlightClick(src);
+          });
+
+          itemEl.appendChild(btnEl);
+          sourcesContainer.appendChild(itemEl);
+        });
+
+        el.appendChild(sourcesContainer);
+      }
+    }
+
+    container.appendChild(el);
+  }
+
   function attachEventListeners() {
     var launcher = shadowRoot.getElementById('sm-launcher');
     var closeBtn = shadowRoot.getElementById('sm-close-btn');
@@ -515,6 +784,7 @@
     var iconChat = shadowRoot.getElementById('sm-icon-chat');
     var iconClose = shadowRoot.getElementById('sm-icon-close');
     var panel = shadowRoot.getElementById('sm-panel');
+    var messagesEl = shadowRoot.getElementById('sm-messages');
 
     function toggleOpen() {
       isOpen = !isOpen;
@@ -522,6 +792,7 @@
         panel.classList.add('sm-open');
         iconChat.style.display = 'none';
         iconClose.style.display = 'block';
+        messagesEl.scrollTop = messagesEl.scrollHeight;
         setTimeout(function () { inputEl.focus(); }, 150);
       } else {
         panel.classList.remove('sm-open');
@@ -556,11 +827,11 @@
     var text = inputEl.value ? inputEl.value.trim() : '';
     if (!text || isSending) return;
 
-    // Append user message
-    var userMsgEl = document.createElement('div');
-    userMsgEl.className = 'sm-msg sm-msg-user';
-    userMsgEl.textContent = text;
-    messagesEl.appendChild(userMsgEl);
+    // Append user message & update persistent history
+    var userMsg = { sender: 'user', text: text };
+    messages.push(userMsg);
+    saveHistory();
+    renderSingleMessage(messagesEl, userMsg);
 
     inputEl.value = '';
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -576,11 +847,17 @@
     sendBtn.disabled = true;
 
     var queryUrl = (apiBaseUrl || '') + '/api/widget/query';
+    var sessionToken = getSessionToken();
 
     fetch(queryUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: embedToken, message: text }),
+      body: JSON.stringify({
+        token: embedToken,
+        message: text,
+        session_token: sessionToken,
+        current_page: window.location.href,
+      }),
     })
       .then(function (res) {
         if (res.status === 429) {
@@ -601,77 +878,30 @@
         return res.json();
       })
       .then(function (data) {
-        messagesEl.removeChild(typingEl);
-
-        var botMsgEl = document.createElement('div');
-        botMsgEl.className = 'sm-msg sm-msg-bot';
-        var textContent = (data && data.response) || 'No response generated.';
-        botMsgEl.innerHTML = formatMarkdown(textContent);
-
-        // Render sources section ONLY if valid non-empty sources exist
-        var validSources = (data && data.sources && Array.isArray(data.sources))
-          ? data.sources.filter(function (s) { return s && s.page_url && String(s.page_url).trim().length > 0; })
-          : [];
-
-        if (validSources.length > 0) {
-          var sourcesContainer = document.createElement('div');
-          sourcesContainer.className = 'sm-sources';
-
-          var sourcesLabel = document.createElement('div');
-          sourcesLabel.className = 'sm-sources-label';
-          sourcesLabel.textContent = 'Sources';
-          sourcesContainer.appendChild(sourcesLabel);
-
-          validSources.forEach(function (src) {
-            var samePage = isSamePage(src.page_url);
-            var itemEl = document.createElement('div');
-            itemEl.className = 'sm-source-item' + (samePage ? ' sm-source-same-page' : '');
-
-            var linkEl = document.createElement('a');
-            linkEl.className = 'sm-source-link';
-            linkEl.href = src.page_url;
-            var displayTitle = src.page_title || src.page_url;
-            linkEl.title = displayTitle;
-            linkEl.textContent = displayTitle;
-            linkEl.target = '_blank';
-            linkEl.rel = 'noopener noreferrer';
-
-            itemEl.appendChild(linkEl);
-
-            // If it's on the same page, include the visual pointer highlight button!
-            if (samePage) {
-              var btnEl = document.createElement('button');
-              btnEl.className = 'sm-source-btn';
-              btnEl.title = 'Highlight on page';
-              btnEl.setAttribute('aria-label', 'Highlight on page');
-              btnEl.innerHTML = `
-                <svg viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="8" stroke-width="2"/>
-                  <circle cx="12" cy="12" r="3" stroke-width="2"/>
-                  <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
-                </svg>
-                Highlight
-              `;
-
-              btnEl.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                attemptVisualPointing(src, true);
-              });
-
-              itemEl.appendChild(btnEl);
-            }
-
-            sourcesContainer.appendChild(itemEl);
-          });
-
-          botMsgEl.appendChild(sourcesContainer);
+        if (messagesEl.contains(typingEl)) {
+          messagesEl.removeChild(typingEl);
         }
 
-        messagesEl.appendChild(botMsgEl);
+        if (data && data.session_token && embedToken) {
+          try {
+            sessionStorage.setItem('sitemind_session_' + embedToken, data.session_token);
+          } catch (_) {}
+        }
+
+        var botMsg = {
+          sender: 'bot',
+          text: (data && data.response) || 'No response generated.',
+          verified: (data && data.verified) || false,
+          sources: (data && data.sources) || [],
+          nav_links: (data && data.nav_links) || [],
+        };
+
+        messages.push(botMsg);
+        saveHistory();
+        renderSingleMessage(messagesEl, botMsg);
         messagesEl.scrollTop = messagesEl.scrollHeight;
 
-        // Auto-attempt visual pointing only on the first source that is on the SAME page
+        // Auto-attempt visual pointing on the first source on the same page
         if (data && data.sources && Array.isArray(data.sources)) {
           var firstSamePageSource = null;
           for (var k = 0; k < data.sources.length; k++) {
@@ -691,11 +921,15 @@
         if (messagesEl.contains(typingEl)) {
           messagesEl.removeChild(typingEl);
         }
-        var errorMsgEl = document.createElement('div');
-        errorMsgEl.className = 'sm-msg sm-msg-bot';
-        errorMsgEl.style.color = '#ef4444';
-        errorMsgEl.textContent = err.message || 'Something went wrong. Please try again.';
-        messagesEl.appendChild(errorMsgEl);
+        var errorMsg = {
+          sender: 'bot',
+          text: err.message || 'Something went wrong. Please try again.',
+          sources: [],
+          nav_links: [],
+        };
+        messages.push(errorMsg);
+        saveHistory();
+        renderSingleMessage(messagesEl, errorMsg);
         messagesEl.scrollTop = messagesEl.scrollHeight;
       })
       .finally(function () {
@@ -707,18 +941,13 @@
   function formatMarkdown(rawText) {
     if (!rawText) return '';
 
-    // Normalize inline hyphen bullets (e.g. "offering: - Item 1 - Item 2") to separate lines
+    // Normalize inline hyphen bullets to separate lines
     var cleaned = String(rawText)
       .replace(/:\s*-\s+/g, ':\n- ')
       .replace(/([^\n])\s+-\s+([A-Z0-9])/g, '$1\n- $2');
 
-    // 1. Escape HTML special characters to prevent any XSS
-    var escaped = cleaned
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    // 1. Escape HTML special characters
+    var escaped = escapeHtml(cleaned);
 
     // 2. Bold: **text** or __text__
     escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -769,7 +998,7 @@
   }
 
   // ========================================================================= //
-  // Module 7 Visual Pointing & Live Page Highlighting Helpers                  //
+  // Visual Pointing, Navigation & Highlighting Helpers                         //
   // ========================================================================= //
 
   function logDevOnly(msg) {
@@ -782,14 +1011,14 @@
       if (isDev) {
         console.log(msg);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function isDomainAllowed() {
     var currentHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
     if (currentHost === 'localhost' || currentHost === '127.0.0.1') return true;
     var registered = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
-    if (!registered || !currentHost) return false;
+    if (!registered || !currentHost) return true;
     return currentHost === registered || currentHost.endsWith('.' + registered);
   }
 
@@ -811,127 +1040,273 @@
     }
   }
 
+  function cleanText(str) {
+    if (!str) return '';
+    return String(str)
+      .toLowerCase()
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, '-')
+      .replace(/[\u00a0\u202f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeUrlPath(urlStr) {
+    if (!urlStr) return '/';
+    try {
+      var u = new URL(urlStr, window.location.origin);
+      var p = u.pathname.replace(/\/+$/, '').toLowerCase();
+      if (!p || p === '/index.html' || p === '/index.htm') return '/';
+      return p;
+    } catch (e) {
+      var clean = (urlStr || '').split('?')[0].split('#')[0].replace(/\/+$/, '').toLowerCase();
+      if (!clean || clean === '/index.html' || clean === '/index.htm') return '/';
+      return clean;
+    }
+  }
+
+  function getHost(urlStr) {
+    try {
+      var u = new URL(urlStr, window.location.origin);
+      return u.hostname.toLowerCase().replace(/^www\./, '');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function isSameDomain(sourceUrl) {
+    if (!sourceUrl) return false;
+    var curHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
+    var srcHost = getHost(sourceUrl);
+    if (!srcHost) return true; // relative path
+    if (curHost === 'localhost' || curHost === '127.0.0.1') return true;
+    var regHost = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
+    return srcHost === curHost || (regHost && (srcHost === regHost || srcHost.endsWith('.' + regHost)));
+  }
+
   function isSamePage(sourceUrl) {
     if (!sourceUrl) return false;
     var sUrl = String(sourceUrl).trim();
     if (sUrl.toLowerCase().endsWith('.pdf') || sUrl.toLowerCase().includes('.pdf?')) {
-      return false; // PDF files are separate documents, not current HTML page
+      return false;
     }
 
-    var currentHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
-    var registeredHost = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
-    var srcHost = getHost(sUrl);
+    if (!isSameDomain(sUrl)) return false;
 
-    var hostMatches = (
-      currentHost === 'localhost' ||
-      currentHost === '127.0.0.1' ||
-      srcHost === currentHost ||
-      (registeredHost && (srcHost === registeredHost || srcHost.endsWith('.' + registeredHost)))
-    );
-
-    if (!hostMatches) return false;
-
-    var curPath = getPath(window.location.href);
-    var srcPath = getPath(sUrl);
+    var curPath = normalizeUrlPath(window.location.href);
+    var srcPath = normalizeUrlPath(sUrl);
     return curPath === srcPath;
   }
 
-  function attemptVisualPointing(source, isManual) {
-    // Entire visual pointing logic wrapped in try-catch — silently aborts on any error
-    try {
-      // 1. Domain allowed check
-      if (!isDomainAllowed()) {
-        return;
-      }
+  function extractCandidatePhrases(source) {
+    var phrases = [];
+    if (!source) return phrases;
 
-      if (!source || !source.page_url) {
-        return;
-      }
-
-      // 2. SPA and same-page check
-      if (!isSamePage(source.page_url)) {
-        if (isManual) {
-          // If manually clicked on different page link, navigate in same tab
-          window.location.href = source.page_url;
+    // 1. Check dom_selector JSON snippet
+    if (source.dom_selector) {
+      try {
+        var parsed = typeof source.dom_selector === 'string'
+          ? JSON.parse(source.dom_selector)
+          : source.dom_selector;
+        if (parsed && parsed.snippet) {
+          var s = cleanText(parsed.snippet);
+          if (s.length >= 8) phrases.push(s);
         }
+      } catch (_) {}
+    }
+
+    // 2. Check full text_snippet
+    var fullSnippet = source.text_snippet ? cleanText(source.text_snippet) : '';
+    if (fullSnippet) {
+      if (fullSnippet.length <= 120) {
+        phrases.push(fullSnippet);
+      } else {
+        phrases.push(fullSnippet.slice(0, 100).replace(/[.,:;!?]+$/, '').trim());
+      }
+
+      // 3. Extract sentence-level candidates (split by punctuation)
+      var rawSentences = String(source.text_snippet).split(/[.?!;\n]+/);
+      for (var i = 0; i < rawSentences.length; i++) {
+        var sentence = cleanText(rawSentences[i]);
+        if (sentence.length >= 15 && sentence.length <= 120) {
+          phrases.push(sentence);
+        }
+      }
+
+      // 4. Extract 5-to-8 word n-gram chunks
+      var words = fullSnippet.split(' ');
+      if (words.length >= 5) {
+        for (var w = 0; w < Math.min(words.length - 4, 4); w += 2) {
+          var chunk = words.slice(w, w + 6).join(' ').replace(/[.,:;!?]+$/, '').trim();
+          if (chunk.length >= 15) phrases.push(chunk);
+        }
+      }
+    }
+
+    // 5. Page title fallback
+    if (source.page_title) {
+      var t = cleanText(source.page_title.split(' - ')[0].split(' | ')[0]);
+      if (t.length >= 8) phrases.push(t);
+    }
+
+    // Deduplicate and sort by length descending (longest / most specific first)
+    var seen = {};
+    var unique = [];
+    for (var p = 0; p < phrases.length; p++) {
+      var item = phrases[p].replace(/[.,:;!?]+$/, '').trim();
+      if (item && !seen[item] && item.length >= 8) {
+        seen[item] = true;
+        unique.push(item);
+      }
+    }
+    unique.sort(function (a, b) { return b.length - a.length; });
+    return unique;
+  }
+
+  function extractSnippet(source) {
+    var phrases = extractCandidatePhrases(source);
+    return phrases.length > 0 ? phrases[0] : null;
+  }
+
+  // BUG 1: Must navigate AND highlight across same-page, same-domain, and external
+  function handleSourceHighlightClick(source) {
+    if (!source || !source.page_url) return;
+    var pageUrl = String(source.page_url).trim();
+
+    // 1. Same page: skip navigation and highlight directly
+    if (isSamePage(pageUrl)) {
+      attemptVisualPointing(source, true);
+      return;
+    }
+
+    // 2. Same domain: navigate and append hash for cross-page highlighting
+    if (isSameDomain(pageUrl)) {
+      var snippet = extractSnippet(source);
+      var targetUrl = pageUrl;
+      if (snippet) {
+        var sep = targetUrl.indexOf('#') > -1 ? '&' : '#';
+        targetUrl = targetUrl + sep + 'sitemind-highlight=' + encodeURIComponent(snippet);
+      }
+      window.location.href = targetUrl;
+      return;
+    }
+
+    // 3. Different domain: open in new tab
+    window.open(pageUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  // BUG 1: Check for #sitemind-highlight= on page load
+  function checkUrlHighlightHash() {
+    try {
+      var hash = window.location.hash || '';
+      var match = hash.match(/[#&]sitemind-highlight=([^&]+)/);
+      if (match && match[1]) {
+        var rawSnippet = decodeURIComponent(match[1]);
+        // Clean hash from URL without reloading page
+        var cleanUrl = window.location.pathname + window.location.search;
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', cleanUrl);
+        }
+        setTimeout(function () {
+          attemptVisualPointing({ text_snippet: rawSnippet }, true);
+        }, 1200);
+      }
+    } catch (_) {}
+  }
+
+  function attemptVisualPointing(source, isManual) {
+    try {
+      if (!source) return;
+
+      var candidatePhrases = extractCandidatePhrases(source);
+      if (candidatePhrases.length === 0) {
+        logDevOnly('visual-point-failed: no search phrases found');
         return;
       }
 
-      // 3. Extract snippet from dom_selector JSON or fallback to text_snippet
-      var snippet = null;
-      if (source.dom_selector) {
-        try {
-          var parsed = typeof source.dom_selector === 'string'
-            ? JSON.parse(source.dom_selector)
-            : source.dom_selector;
-          if (parsed && parsed.snippet) {
-            snippet = parsed.snippet;
-          }
-        } catch (jsonErr) {}
-      }
+      // Query all visible, text-containing elements on the page
+      var candidates = document.querySelectorAll(
+        'p, li, h1, h2, h3, h4, h5, h6, span, td, th, blockquote, div, a, article, section, header, footer, b, strong, em, label, dt, dd'
+      );
 
-      if (!snippet && source.text_snippet) {
-        var cleanSnippet = source.text_snippet.replace(/\n+/g, ' ').trim();
-        snippet = cleanSnippet.slice(0, 80);
-      }
-
-      if (!snippet) {
-        logDevOnly('visual-point-failed: no snippet');
-        return;
-      }
-
-      var snippetLower = snippet.trim().toLowerCase().replace(/[.,:;!?]+$/, '').trim();
-      if (!snippetLower) {
-        logDevOnly('visual-point-failed: empty snippet');
-        return;
-      }
-
-      // 4. Search outside shadow root, prioritizing innermost / most specific element
-      var candidates = document.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, span, td, th, blockquote, div');
       var matchedEl = null;
       var shortestLen = Infinity;
 
-      for (var i = 0; i < candidates.length; i++) {
-        var el = candidates[i];
-        if (containerEl && containerEl.contains(el)) continue;
-        var text = (el.innerText || el.textContent || '').toLowerCase();
-        if (text.includes(snippetLower)) {
-          if (text.length < shortestLen) {
-            matchedEl = el;
-            shortestLen = text.length;
+      // Strategy 1: Contiguous phrase matching (longest phrase to shortest)
+      for (var p = 0; p < candidatePhrases.length; p++) {
+        var phrase = candidatePhrases[p];
+        if (phrase.length < 8) continue;
+
+        for (var i = 0; i < candidates.length; i++) {
+          var el = candidates[i];
+          if (containerEl && containerEl.contains(el)) continue;
+          if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'SVG') continue;
+
+          var elText = cleanText(el.innerText || el.textContent || '');
+          if (!elText) continue;
+
+          if (elText.includes(phrase)) {
+            // Prefer the most specific (innermost) element that contains the phrase
+            if (elText.length < shortestLen) {
+              matchedEl = el;
+              shortestLen = elText.length;
+            }
           }
+        }
+
+        // If we found a specific matched element for this phrase, proceed
+        if (matchedEl && shortestLen < 600) {
+          break;
         }
       }
 
-      // Sub-sentence fallback (first 35 chars) if full sentence was split across nested tags
-      if (!matchedEl && snippetLower.length > 35) {
-        var shorter = snippetLower.slice(0, 35).replace(/[.,:;!?]+$/, '').trim();
-        for (var j = 0; j < candidates.length; j++) {
-          var cel = candidates[j];
-          if (containerEl && containerEl.contains(cel)) continue;
-          var cText = (cel.innerText || cel.textContent || '').toLowerCase();
-          if (cText.includes(shorter)) {
-            if (cText.length < shortestLen) {
+      // Strategy 2: Distinctive keyword density fallback if DOM tags split the sentence
+      if (!matchedEl && candidatePhrases.length > 0) {
+        var baseWords = candidatePhrases[0].split(' ').filter(function (w) { return w.length >= 4; });
+        if (baseWords.length >= 3) {
+          var bestScore = 0;
+          for (var j = 0; j < candidates.length; j++) {
+            var cel = candidates[j];
+            if (containerEl && containerEl.contains(cel)) continue;
+            if (cel.tagName === 'SCRIPT' || cel.tagName === 'STYLE' || cel.tagName === 'SVG') continue;
+
+            var cText = cleanText(cel.innerText || cel.textContent || '');
+            if (!cText || cText.length > 800) continue;
+
+            var score = 0;
+            for (var b = 0; b < baseWords.length; b++) {
+              if (cText.includes(baseWords[b])) score++;
+            }
+
+            if (score >= Math.min(3, baseWords.length) && score > bestScore) {
+              bestScore = score;
               matchedEl = cel;
-              shortestLen = cText.length;
             }
           }
         }
       }
 
-      // 5. If no element matched, log in dev mode only
       if (!matchedEl) {
-        logDevOnly('visual-point-failed: element not found on page');
+        logDevOnly('visual-point-failed: element not found on page for phrases: ' + candidatePhrases.slice(0, 3).join(' | '));
         return;
       }
 
-      // 6. Highlight injection with direct styles and animated glow
-      var origOutline = matchedEl.style.outline;
-      var origOutlineOffset = matchedEl.style.outlineOffset;
-      var origBg = matchedEl.style.backgroundColor;
-      var origBoxShadow = matchedEl.style.boxShadow;
-      var origTransition = matchedEl.style.transition;
-      var origBorderRadius = matchedEl.style.borderRadius;
+      // If matched element is an inline wrapper, locate parent paragraph/item for better visibility
+      var targetEl = matchedEl;
+      if (targetEl.tagName === 'SPAN' || targetEl.tagName === 'B' || targetEl.tagName === 'STRONG' || targetEl.tagName === 'EM') {
+        var parentBlock = targetEl.closest('p, li, h1, h2, h3, h4, h5, h6, div, article');
+        if (parentBlock && parentBlock.innerText && cleanText(parentBlock.innerText).length < 500) {
+          targetEl = parentBlock;
+        }
+      }
+
+      var origOutline = targetEl.style.outline;
+      var origOutlineOffset = targetEl.style.outlineOffset;
+      var origBg = targetEl.style.backgroundColor;
+      var origBoxShadow = targetEl.style.boxShadow;
+      var origTransition = targetEl.style.transition;
+      var origBorderRadius = targetEl.style.borderRadius;
 
       var styleId = 'sitemind-highlight-style';
       var existingStyle = document.getElementById(styleId);
@@ -963,33 +1338,30 @@
         document.head.appendChild(styleEl);
       }
 
-      // Set visible initial highlight inline styles directly so no CSS rule can override it
-      matchedEl.style.transition = 'all 0.3s ease';
-      matchedEl.style.borderRadius = '6px';
-      matchedEl.style.outline = '3px solid #2563eb';
-      matchedEl.style.outlineOffset = '4px';
-      matchedEl.style.backgroundColor = 'rgba(254, 240, 138, 0.85)';
-      matchedEl.style.boxShadow = '0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8)';
-      matchedEl.classList.add('sitemind-highlight-active');
+      targetEl.style.transition = 'all 0.3s ease';
+      targetEl.style.borderRadius = '6px';
+      targetEl.style.outline = '3px solid #2563eb';
+      targetEl.style.outlineOffset = '4px';
+      targetEl.style.backgroundColor = 'rgba(254, 240, 138, 0.85)';
+      targetEl.style.boxShadow = '0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8)';
+      targetEl.classList.add('sitemind-highlight-active');
 
-      // Scroll smoothly into center view
-      matchedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-      // After 4500ms, cleanly restore original element styles
       setTimeout(function () {
         try {
-          matchedEl.classList.remove('sitemind-highlight-active');
-          matchedEl.style.outline = origOutline;
-          matchedEl.style.outlineOffset = origOutlineOffset;
-          matchedEl.style.backgroundColor = origBg;
-          matchedEl.style.boxShadow = origBoxShadow;
-          matchedEl.style.borderRadius = origBorderRadius;
+          targetEl.classList.remove('sitemind-highlight-active');
+          targetEl.style.outline = origOutline;
+          targetEl.style.outlineOffset = origOutlineOffset;
+          targetEl.style.backgroundColor = origBg;
+          targetEl.style.boxShadow = origBoxShadow;
+          targetEl.style.borderRadius = origBorderRadius;
           setTimeout(function () {
             try {
-              matchedEl.style.transition = origTransition;
-            } catch (_) {}
+              targetEl.style.transition = origTransition;
+            } catch (_) { }
           }, 350);
-        } catch (_) {}
+        } catch (_) { }
       }, 4500);
 
     } catch (err) {
