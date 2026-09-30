@@ -83,6 +83,11 @@ class Config:
         "/sitemap.xml",
     ]
 
+    # ------------------------------------------------------------------ #
+    # Google Drive Integration                                            #
+    # ------------------------------------------------------------------ #
+    GOOGLE_DRIVE_API_KEY: str = os.getenv("GOOGLE_DRIVE_API_KEY", "")
+
 
 # Module-level singleton so callers can do `from crawl_service.config import cfg`
 cfg = Config()

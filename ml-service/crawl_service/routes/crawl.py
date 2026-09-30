@@ -215,3 +215,41 @@ def stop_crawl_job(job_id: int):
         "status": "cancelled",
         "message": f"Stop request recorded for crawl job {job_id}"
     }), 200
+
+
+@crawl_bp.post("/crawl/drive")
+def trigger_drive_crawl():
+    """
+    Trigger Google Drive recursive crawl and vector indexing for a website.
+    Traverses all nested folders/subfolders, downloads PDFs, runs OCR if needed,
+    and indexes chunks into the RAG vector store.
+    """
+    body = request.get_json(silent=True) or {}
+    website_id = body.get("website_id")
+    site_id = body.get("site_id")
+    drive_url = body.get("drive_url")
+    api_key = body.get("api_key")
+
+    if not website_id or not drive_url:
+        return jsonify({"error": "website_id and drive_url are required"}), 400
+
+    try:
+        website_id = int(website_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "website_id must be an integer"}), 400
+
+    from crawl_service.crawler.drive import GoogleDriveCrawler
+    from crawl_service.tasks.crawl_task import _notify_node_backend
+
+    crawler = GoogleDriveCrawler(api_key=api_key)
+    result = crawler.crawl_and_index_folder(
+        folder_url_or_id=drive_url,
+        website_id=website_id,
+        site_id=site_id,
+        notify_node_fn=_notify_node_backend,
+    )
+
+    if "error" in result:
+        return jsonify(result), 400
+
+    return jsonify(result), 200

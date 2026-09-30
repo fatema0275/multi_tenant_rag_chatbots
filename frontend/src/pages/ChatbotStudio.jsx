@@ -32,8 +32,9 @@ import {
   ShieldAlert,
   Globe,
   Monitor,
-  Smartphone,
   Zap,
+  FolderDown,
+  FileText,
 } from 'lucide-react';
 
 const ChatbotStudio = () => {
@@ -91,6 +92,13 @@ const ChatbotStudio = () => {
   const [customServerUrl, setCustomServerUrl] = useState(() => {
     return (typeof window !== 'undefined' && localStorage.getItem('sitemind_custom_server_url')) || '';
   });
+
+  // Google Drive Ingestion State
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [driveUrl, setDriveUrl] = useState('');
+  const [driveApiKey, setDriveApiKey] = useState('');
+  const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+  const [driveSyncResult, setDriveSyncResult] = useState(null);
 
   // Load configuration for active website
   useEffect(() => {
@@ -362,6 +370,43 @@ const ChatbotStudio = () => {
       toast.error('Network error deleting knowledge entry');
     } finally {
       setDeleteKnowledgeId(null);
+    }
+  };
+
+  const handleSyncDrive = async (e) => {
+    e.preventDefault();
+    if (!driveUrl.trim() || !activeWebsite?.id) return;
+
+    setIsSyncingDrive(true);
+    setDriveSyncResult(null);
+
+    try {
+      const res = await fetch(`/api/websites/${activeWebsite.id}/drive-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          driveUrl: driveUrl.trim(),
+          apiKey: driveApiKey.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to sync Google Drive folder');
+      } else {
+        toast.success(data.message || 'Google Drive folder indexed successfully!');
+        setDriveSyncResult(data.driveDetails);
+        loadManualContent(activeWebsite.id);
+        if (data.record) {
+          setKnowledgeList((prev) => [data.record, ...prev]);
+        }
+      }
+    } catch {
+      toast.error('Network error during Google Drive sync');
+    } finally {
+      setIsSyncingDrive(false);
     }
   };
 
@@ -873,16 +918,27 @@ const ChatbotStudio = () => {
                 </p>
               </div>
 
-              <button
-                onClick={() => {
-                  setEditingKnowledge(null);
-                  setKnowledgeForm({ title: '', content: '' });
-                  setShowKnowledgeModal(true);
-                }}
-                className="px-3.5 py-2 rounded-[10px] bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer self-start sm:self-auto shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Content
-              </button>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => {
+                    setDriveSyncResult(null);
+                    setShowDriveModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-[10px] bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-blue-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <FolderDown className="w-3.5 h-3.5 text-blue-400" /> Import Google Drive
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingKnowledge(null);
+                    setKnowledgeForm({ title: '', content: '' });
+                    setShowKnowledgeModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-[10px] bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Content
+                </button>
+              </div>
             </div>
 
             {/* Search filter for knowledge */}
@@ -1220,6 +1276,133 @@ const ChatbotStudio = () => {
                   className="px-4 py-2 text-xs font-bold rounded-[10px] bg-[#22C55E] hover:bg-[#16A34A] text-white disabled:opacity-50"
                 >
                   Save Knowledge
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Google Drive Import Modal ──────────────────────────── */}
+      {showDriveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            onClick={() => !isSyncingDrive && setShowDriveModal(false)}
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+          />
+          <div className="relative w-full max-w-lg bg-[#131318] border border-[#27272A] rounded-[18px] p-6 shadow-2xl z-10 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <FolderDown className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    Import Google Drive Folder
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    Recursively traverses folders &amp; subfolders, downloads PDFs, and indexes them into RAG.
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={isSyncingDrive}
+                onClick={() => setShowDriveModal(false)}
+                className="text-zinc-400 hover:text-white disabled:opacity-40"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSyncDrive} className="space-y-4 pt-1">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-300">
+                  Google Drive Folder Link or Folder ID <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={driveUrl}
+                  onChange={(e) => setDriveUrl(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/1abc... or 1abc..."
+                  className="w-full h-10 px-3 rounded-[10px] bg-[#09090B] border border-[#27272A] text-xs text-white focus:outline-none focus:border-blue-500"
+                  required
+                  autoFocus
+                />
+                <p className="text-[11px] text-zinc-500">
+                  Make sure the folder is shared with &quot;Anyone with the link can view&quot; or accessible via your API key.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-300">
+                  Google API Key (Optional override)
+                </label>
+                <input
+                  type="text"
+                  value={driveApiKey}
+                  onChange={(e) => setDriveApiKey(e.target.value)}
+                  placeholder="AIzaSy... (uses server GOOGLE_DRIVE_API_KEY if left empty)"
+                  className="w-full h-10 px-3 rounded-[10px] bg-[#09090B] border border-[#27272A] text-xs text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Sync Results Feedback */}
+              {driveSyncResult && (
+                <div className="p-3.5 rounded-[12px] bg-blue-950/30 border border-blue-800/40 text-xs space-y-2">
+                  <div className="flex items-center gap-2 text-blue-300 font-semibold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Sync Complete</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                    <div className="p-2 rounded bg-[#09090B]/60 border border-zinc-800">
+                      <div className="text-[10px] text-zinc-400">Total Found</div>
+                      <div className="text-sm font-bold text-white">{driveSyncResult.totalDiscovered || 0}</div>
+                    </div>
+                    <div className="p-2 rounded bg-[#09090B]/60 border border-zinc-800">
+                      <div className="text-[10px] text-emerald-400">Indexed</div>
+                      <div className="text-sm font-bold text-emerald-400">{driveSyncResult.indexedCount || 0}</div>
+                    </div>
+                    <div className="p-2 rounded bg-[#09090B]/60 border border-zinc-800">
+                      <div className="text-[10px] text-zinc-500">Skipped</div>
+                      <div className="text-sm font-bold text-zinc-400">{driveSyncResult.skippedCount || 0}</div>
+                    </div>
+                  </div>
+                  {driveSyncResult.indexedFiles?.length > 0 && (
+                    <div className="pt-1 max-h-28 overflow-y-auto space-y-1">
+                      <div className="text-[10px] font-semibold text-zinc-400">Indexed Documents:</div>
+                      {driveSyncResult.indexedFiles.map((file, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 text-[11px] text-zinc-300">
+                          <FileText className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <span className="truncate">{file.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#27272A]">
+                <button
+                  type="button"
+                  disabled={isSyncingDrive}
+                  onClick={() => setShowDriveModal(false)}
+                  className="px-4 py-2 text-xs font-semibold rounded-[10px] text-zinc-400 hover:text-white disabled:opacity-50"
+                >
+                  {driveSyncResult ? 'Done' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSyncingDrive || !driveUrl.trim()}
+                  className="px-4 py-2 text-xs font-bold rounded-[10px] bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-blue-600/20"
+                >
+                  {isSyncingDrive ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Traversing &amp; Indexing Drive...
+                    </>
+                  ) : (
+                    'Traverse & Index Drive'
+                  )}
                 </button>
               </div>
             </form>

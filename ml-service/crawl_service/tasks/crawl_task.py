@@ -242,6 +242,34 @@ def _process_page(
     crawl_type: str,
     existing_pages: dict,
 ) -> str:
+    # Route Google Drive URLs directly to specialized Drive Ingestion Engine
+    netloc = urlparse(url).netloc.lower()
+    if "drive.google.com" in netloc or "docs.google.com" in netloc:
+        logger.info("Routing Google Drive link to GoogleDriveCrawler: %s", url)
+        try:
+            from crawl_service.crawler.drive import GoogleDriveCrawler
+            crawler = GoogleDriveCrawler()
+            res = crawler.crawl_and_index_folder(
+                url,
+                website_id=website_id,
+                site_id=site_id,
+                notify_node_fn=_notify_node_backend,
+            )
+            count = res.get("indexedCount", 0)
+            if count > 0:
+                log_page_outcome(job_id, url, "success-drive", f"Indexed {count} Drive file(s)")
+                increment_job_counter(job_id, "pages_crawled")
+                return "success"
+            else:
+                log_page_outcome(job_id, url, "skipped-drive", res.get("error", "No indexable PDF/text files"))
+                increment_job_counter(job_id, "pages_skipped")
+                return "skipped"
+        except Exception as drive_err:
+            logger.error("Error processing Drive link %s: %s", url, drive_err)
+            log_page_outcome(job_id, url, "failed-drive", str(drive_err))
+            increment_job_counter(job_id, "pages_failed")
+            return "failed"
+
     if not is_allowed(url, domain, scheme):
         log_page_outcome(job_id, url, "robots_disallowed", "Disallowed by robots.txt")
         increment_job_counter(job_id, "pages_skipped")

@@ -68,10 +68,12 @@ def create_app() -> Flask:
     from crawl_service.routes.crawl import crawl_bp
     from crawl_service.routes.chatbot import chatbot_bp
     from crawl_service.routes.widget import widget_bp
+    from crawl_service.routes.admin_analytics import admin_analytics_bp
 
     app.register_blueprint(crawl_bp)
     app.register_blueprint(chatbot_bp)
     app.register_blueprint(widget_bp)
+    app.register_blueprint(admin_analytics_bp)
 
     # Static asset serving for widget-v1.js with long cache headers
     @app.get("/static/<path:filename>")

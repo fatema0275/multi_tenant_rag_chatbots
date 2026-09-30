@@ -259,4 +259,164 @@ router.post('/websites/:id/crawl', async (req, res, next) => {
   }
 });
 
+const BRIDGE_URL = process.env.CRAWL_BRIDGE_URL || 'http://localhost:8001';
+
+async function safeParseResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch (_) {}
+  }
+  const text = await response.text();
+  const cleanText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return { error: cleanText ? `Python bridge error (${response.status}): ${cleanText.slice(0, 200)}` : `Python bridge HTTP ${response.status}` };
+}
+
+/**
+ * POST /api/admin/websites/:id/suspend
+ * Suspend/unsuspend chatbot for website
+ */
+router.post('/websites/:id/suspend', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) return res.status(400).json({ error: 'Invalid website ID' });
+
+    const [configs] = await sequelize.query(
+      `SELECT id, is_active FROM chatbot_configs WHERE website_id = :websiteId LIMIT 1;`,
+      { replacements: { websiteId }, type: sequelize.QueryTypes.SELECT }
+    );
+
+    let nextState = false;
+    if (!configs) {
+      await sequelize.query(
+        `INSERT INTO chatbot_configs (website_id, is_active, theme_color, background_color, text_color)
+         VALUES (:websiteId, false, '#6366f1', '#ffffff', '#09090b');`,
+        { replacements: { websiteId } }
+      );
+    } else {
+      nextState = !configs.is_active;
+      await sequelize.query(
+        `UPDATE chatbot_configs SET is_active = :nextState, updated_at = NOW() WHERE website_id = :websiteId;`,
+        { replacements: { nextState, websiteId } }
+      );
+    }
+
+    return res.status(200).json({
+      website_id: websiteId,
+      is_active: nextState,
+      status: nextState ? 'active' : 'suspended',
+      message: `Website #${websiteId} chatbot widget is now ${nextState ? 'active' : 'suspended'}.`
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/admin/websites/:id
+ * Delete website and associated chunks & jobs
+ */
+router.delete('/websites/:id', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) return res.status(400).json({ error: 'Invalid website ID' });
+
+    const website = await Website.findByPk(websiteId);
+    if (!website) return res.status(404).json({ error: 'Website not found' });
+
+    const siteId = website.site_id;
+
+    await sequelize.query(`DELETE FROM document_chunks WHERE website_id = :websiteId OR site_id = :siteId`, {
+      replacements: { websiteId, siteId }
+    });
+    await sequelize.query(`DELETE FROM pages WHERE website_id = :websiteId OR site_id = :siteId`, {
+      replacements: { websiteId, siteId }
+    });
+    await sequelize.query(`DELETE FROM crawl_logs WHERE crawl_job_id IN (SELECT id FROM crawl_jobs WHERE website_id = :websiteId)`, {
+      replacements: { websiteId }
+    });
+    await sequelize.query(`DELETE FROM crawl_jobs WHERE website_id = :websiteId`, {
+      replacements: { websiteId }
+    });
+    await sequelize.query(`DELETE FROM sync_logs WHERE website_id = :websiteId`, {
+      replacements: { websiteId }
+    });
+    await sequelize.query(`DELETE FROM chatbot_configs WHERE website_id = :websiteId`, {
+      replacements: { websiteId }
+    });
+    await website.destroy();
+
+    return res.status(200).json({ message: `Website #${websiteId} (${website.domain}) deleted successfully` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/users/:id/suspend
+ * Suspend/unsuspend user account
+ */
+router.post('/users/:id/suspend', async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+    if (userId === req.userId) {
+      return res.status(400).json({ error: 'You cannot suspend your own active admin account' });
+    }
+
+    const [userRows] = await sequelize.query(`SELECT id, email, is_suspended FROM users WHERE id = :userId`, {
+      replacements: { userId },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    if (!userRows) return res.status(404).json({ error: 'User not found' });
+
+    const newSuspended = !Boolean(userRows.is_suspended);
+    await sequelize.query(`UPDATE users SET is_suspended = :newSuspended WHERE id = :userId`, {
+      replacements: { newSuspended, userId }
+    });
+
+    return res.status(200).json({
+      user_id: userId,
+      is_suspended: newSuspended,
+      account_status: newSuspended ? 'suspended' : 'active',
+      message: `User ${userRows.email} account is now ${newSuspended ? 'suspended' : 'active'}.`
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Forward all GET/POST/DELETE /api/admin/analytics/* to Python Flask bridge
+ */
+router.use('/analytics', async (req, res, next) => {
+  try {
+    const subPath = req.originalUrl.replace(/^.*?\/api\/admin\/analytics/, '');
+    const url = `${BRIDGE_URL}/api/admin/analytics${subPath}`;
+    
+    const fetchOptions = {
+      method: req.method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: req.headers.authorization || ''
+      }
+    };
+
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+      fetchOptions.body = JSON.stringify(req.body);
+    }
+
+    const response = await fetch(url, fetchOptions);
+    const data = await safeParseResponse(response);
+    return res.status(response.status).json(data);
+  } catch (err) {
+    console.error('[AdminRoute] Error forwarding analytics to Python bridge:', err.message);
+    return res.status(502).json({ error: `Python bridge unreachable: ${err.message}` });
+  }
+});
+
 module.exports = router;
+

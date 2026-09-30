@@ -165,7 +165,7 @@ def _bfs_discover(
     while current_level and len(found) < cfg.MAX_PAGES and depth <= cfg.MAX_DEPTH:
         candidates = [
             u for u in current_level
-            if u not in visited and is_allowed(u, domain, scheme)
+            if u not in visited and (_is_drive_url(u) or is_allowed(u, domain, scheme))
         ]
 
         for u in candidates:
@@ -177,6 +177,9 @@ def _bfs_discover(
         next_level: set[str] = set()
 
         def _fetch_url(u: str):
+            if _is_drive_url(u):
+                # Google Drive link discovered on site: keep it, don't parse HTML links
+                return u, ""
             try:
                 resp = requests.get(u, headers=headers, timeout=5, allow_redirects=True)
                 u_path = urlparse(u).path.lower()
@@ -237,8 +240,9 @@ def _bfs_discover(
                                 href = a_tag["href"].strip()
                                 abs_url = urljoin(u, href)
                                 norm_child = _normalise(abs_url)
-                                if norm_child and _same_domain(norm_child, domain) and norm_child not in visited:
-                                    next_level.add(norm_child)
+                                if norm_child and norm_child not in visited:
+                                    if _is_drive_url(norm_child) or _same_domain(norm_child, domain):
+                                        next_level.add(norm_child)
                         except Exception:
                             pass
 
@@ -276,6 +280,15 @@ def _normalise(url: str) -> Optional[str]:
     ))
 
 
+def _is_drive_url(url: str) -> bool:
+    """True if url points to Google Drive or Google Docs."""
+    try:
+        netloc = urlparse(url).netloc.lower()
+        return "drive.google.com" in netloc or "docs.google.com" in netloc
+    except Exception:
+        return False
+
+
 def _same_domain(url: str, domain: str) -> bool:
     """True if url's netloc matches the crawl domain (ignoring www prefix and ports)."""
     netloc = urlparse(url).netloc.lower().split(":")[0]
@@ -286,7 +299,7 @@ def _same_domain(url: str, domain: str) -> bool:
 
 def _filter_and_dedup(urls: list[str], domain: str, scheme: str) -> list[str]:
     """
-    Filter a list of URLs to same-domain, robots-allowed, normalised,
+    Filter a list of URLs to same-domain or Google Drive, robots-allowed, normalised,
     deduplicated entries.
     """
     seen: set[str] = set()
@@ -295,11 +308,11 @@ def _filter_and_dedup(urls: list[str], domain: str, scheme: str) -> list[str]:
         norm = _normalise(raw)
         if not norm:
             continue
-        if not _same_domain(norm, domain):
+        if not (_is_drive_url(norm) or _same_domain(norm, domain)):
             continue
         if norm in seen:
             continue
-        if not is_allowed(norm, domain, scheme):
+        if not _is_drive_url(norm) and not is_allowed(norm, domain, scheme):
             continue
         seen.add(norm)
         result.append(norm)

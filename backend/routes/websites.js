@@ -370,6 +370,107 @@ router.delete('/:id/manual-content/:contentId', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/websites/:id/drive-sync
+ * Ingests a Google Drive folder URL, traverses folders & subfolders, downloads PDFs,
+ * runs OCR/extraction, and stores vector embeddings for the website.
+ */
+router.post('/:id/drive-sync', async (req, res, next) => {
+  try {
+    const websiteId = parseInt(req.params.id, 10);
+    if (isNaN(websiteId)) return res.status(400).json({ error: 'Invalid website ID' });
+
+    const { driveUrl, apiKey } = req.body || {};
+    if (!driveUrl || typeof driveUrl !== 'string' || !driveUrl.trim()) {
+      return res.status(400).json({ error: 'driveUrl is required' });
+    }
+
+    const { Website, sequelize } = require('../models');
+    const website = await Website.findOne({ where: { id: websiteId, user_id: req.userId } });
+    if (!website) return res.status(403).json({ error: 'Website not found or unauthorized' });
+
+    let targetSiteId = website.site_id;
+    if (!targetSiteId) {
+      try {
+        const [siteRows] = await sequelize.query(
+          `SELECT id FROM sites WHERE domain = :domain LIMIT 1`,
+          { replacements: { domain: website.domain } }
+        );
+        if (siteRows && siteRows.length > 0) {
+          targetSiteId = siteRows[0].id;
+          await website.update({ site_id: targetSiteId });
+        }
+      } catch (siteErr) {
+        console.warn('[DriveSync] Warning: could not resolve site_id from sites table:', siteErr.message);
+      }
+    }
+
+    const crawlBridgeUrl = process.env.CRAWL_BRIDGE_URL || 'http://localhost:8001';
+    const driveKey = (apiKey && apiKey.trim()) || process.env.GOOGLE_DRIVE_API_KEY || '';
+
+    // Delegate recursive folder crawl & OCR extraction to Python ML service
+    let driveRes;
+    try {
+      const mlResp = await fetch(`${crawlBridgeUrl}/crawl/drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          website_id: website.id,
+          site_id: targetSiteId || website.site_id || null,
+          drive_url: driveUrl.trim(),
+          api_key: driveKey || null,
+        }),
+      });
+      driveRes = await mlResp.json();
+      if (!mlResp.ok) {
+        return res.status(mlResp.status).json({
+          error: driveRes.error || 'Failed to crawl Google Drive folder',
+          details: driveRes,
+        });
+      }
+    } catch (mlErr) {
+      console.error('[DriveSync] Error communicating with ML service:', mlErr);
+      return res.status(502).json({
+        error: `ML Crawler service unreachable at ${crawlBridgeUrl}: ${mlErr.message}`,
+      });
+    }
+
+    // Record an entry in manual_content so it appears in the knowledge base list
+    let recordEntry = null;
+    try {
+      const fileNames = (driveRes.indexedFiles || []).map((f) => f.name).join(', ');
+      const summaryText = `Google Drive Folder Sync: ${driveRes.folderId}\n` +
+        `Indexed ${driveRes.indexedCount} file(s) across folder hierarchy:\n${fileNames}`;
+
+      const [insertResult] = await sequelize.query(
+        `INSERT INTO manual_content (website_id, added_by_user_id, title, content_text, created_at)
+         VALUES (:websiteId, :userId, :title, :content, NOW())
+         RETURNING id, website_id, title, content_text AS content, created_at AS "createdAt"`,
+        {
+          replacements: {
+            websiteId,
+            userId: req.userId,
+            title: `Google Drive Folder (${driveRes.indexedCount} files)`,
+            content: summaryText,
+          },
+        }
+      );
+      recordEntry = insertResult[0];
+    } catch (logErr) {
+      console.warn('[DriveSync] Could not save audit record to manual_content:', logErr.message);
+    }
+
+    return res.status(200).json({
+      status: 'ok',
+      message: `Successfully processed Google Drive folder hierarchy! Indexed ${driveRes.indexedCount} document(s).`,
+      record: recordEntry,
+      driveDetails: driveRes,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
 
 
