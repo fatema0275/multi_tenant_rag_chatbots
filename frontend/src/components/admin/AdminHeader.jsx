@@ -60,20 +60,20 @@ const AdminHeader = ({
   ].includes(activePage);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/85 dark:bg-[#09090B]/85 backdrop-blur-xl border-b border-zinc-200 dark:border-border-dark px-4 sm:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
+    <header className="sticky top-0 z-30 bg-[#09090B]/90 backdrop-blur-md border-b border-[#27272A] px-4 sm:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 font-sans">
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenMobileSidebar}
-          className="p-2 -ml-2 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 lg:hidden cursor-pointer"
+          className="p-2 -ml-2 rounded-lg text-zinc-400 hover:bg-[#1C1C24] hover:text-white lg:hidden cursor-pointer"
           title="Open Menu"
         >
           <Menu className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="font-heading text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white leading-tight">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white leading-tight">
             {meta.title}
           </h1>
-          <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark mt-0.5 line-clamp-1">
+          <p className="text-xs text-zinc-400 mt-0.5 line-clamp-1">
             {meta.subtitle}
           </p>
         </div>
@@ -82,19 +82,15 @@ const AdminHeader = ({
       <div className="flex items-center gap-3 self-end md:self-auto">
         {/* Shared Date Range Selector for Analytics */}
         {isAnalyticsPage && (
-          <div className="flex items-center bg-zinc-100 dark:bg-surface-dark border border-zinc-200 dark:border-border-dark p-1 rounded-xl shadow-xs">
-            <div className="hidden sm:flex items-center gap-1.5 px-2 text-[11px] font-bold text-txt-secondary-light dark:text-txt-secondary-dark">
-              <Calendar className="w-3.5 h-3.5 text-accent" />
-              <span>Range:</span>
-            </div>
+          <div className="flex items-center bg-[#131318] border border-[#27272A] p-0.5 rounded-[10px]">
             {['7d', '30d', '90d'].map((r) => (
               <button
                 key={r}
                 onClick={() => setDateRange(r)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                className={`px-3 py-1 text-xs font-medium rounded-[8px] transition-all cursor-pointer ${
                   dateRange === r
-                    ? 'bg-white dark:bg-[#202026] text-accent shadow-xs border border-zinc-200/50 dark:border-zinc-700/60'
-                    : 'text-txt-secondary-light dark:text-txt-secondary-dark hover:text-zinc-900 dark:hover:text-white'
+                    ? 'bg-[#27272A] text-white shadow-xs font-semibold'
+                    : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 {r.toUpperCase()}
@@ -107,9 +103,9 @@ const AdminHeader = ({
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-surface-dark border border-zinc-200 dark:border-border-dark text-xs font-semibold text-zinc-900 dark:text-white hover:border-accent transition-all cursor-pointer shadow-xs"
+          className="h-8 flex items-center gap-2 px-3 rounded-[10px] bg-[#131318] border border-[#27272A] text-xs font-medium text-zinc-300 hover:text-white hover:border-zinc-600 transition-colors cursor-pointer disabled:opacity-50"
         >
-          <RefreshCw className={`w-3.5 h-3.5 text-accent ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 text-zinc-400 ${loading ? 'animate-spin' : ''}`} />
           <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>

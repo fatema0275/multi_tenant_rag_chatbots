@@ -22,11 +22,7 @@ import {
   CheckCircle2,
   Layers,
   Globe,
-  Timer,
-  Activity,
-  UserPlus,
-  Zap,
-  ArrowUpRight
+  Timer
 } from 'lucide-react';
 
 const formatNumber = (num) => {
@@ -37,42 +33,42 @@ const formatNumber = (num) => {
 const CustomTooltip = ({ active, payload, label, unit = '' }) => {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div className="bg-white/95 dark:bg-[#18181B]/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 p-2.5 rounded-xl shadow-xl text-xs">
-      <div className="font-semibold text-zinc-500 dark:text-zinc-400 mb-1">{label}</div>
+    <div className="bg-[#131318] border border-[#27272A] p-2.5 rounded-[10px] shadow-xl text-xs space-y-1 font-sans">
+      <div className="font-semibold text-zinc-400">{label}</div>
       <div className="flex items-center gap-2">
         <span
-          className="w-2.5 h-2.5 rounded-full"
+          className="w-2 h-2 rounded-full"
           style={{ backgroundColor: payload[0].color || payload[0].stroke || '#22C55E' }}
         />
-        <span className="font-bold text-zinc-900 dark:text-white tabular-nums">
-          {payload[0].value.toLocaleString()} {unit}
+        <span className="font-semibold text-white tabular-nums">
+          {payload[0].value?.toLocaleString()} {unit}
         </span>
       </div>
     </div>
   );
 };
 
-const MetricCard = ({ icon: Icon, label, value, sub, colorClass = 'text-accent', bgClass = 'bg-accent/10', delay = 0 }) => (
+const MetricCard = ({ icon: Icon, label, value, sub, delay = 0 }) => (
   <motion.div
-    initial={{ opacity: 0, y: 14 }}
+    initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.35, delay }}
-    className="bg-white dark:bg-surface-dark border border-zinc-200/80 dark:border-border-dark p-4 rounded-[18px] flex flex-col justify-between hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-xs"
+    transition={{ duration: 0.3, delay }}
+    className="bg-[#131318] border border-[#27272A] p-4 rounded-[16px] flex flex-col justify-between hover:border-zinc-700 transition-colors"
   >
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-semibold text-txt-secondary-light dark:text-txt-secondary-dark line-clamp-1">
-        {label}
-      </span>
-      <div className={`w-8 h-8 rounded-xl ${bgClass} ${colorClass} flex items-center justify-center shrink-0`}>
+    <div className="flex items-center justify-between mb-3">
+      <div className="w-8 h-8 rounded-[10px] bg-[#27272A] text-zinc-300 flex items-center justify-center">
         <Icon className="w-4 h-4" />
       </div>
     </div>
-    <div className="mt-3">
-      <div className="text-2xl font-heading font-extrabold text-zinc-900 dark:text-white tabular-nums tracking-tight">
+    <div>
+      <div className="text-2xl font-bold tracking-tight text-white tabular-nums">
         {value}
       </div>
+      <div className="text-xs font-semibold text-zinc-200 mt-1 line-clamp-1">
+        {label}
+      </div>
       {sub && (
-        <div className="text-[11px] font-medium text-txt-secondary-light dark:text-txt-secondary-dark mt-0.5">
+        <div className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
           {sub}
         </div>
       )}
@@ -81,30 +77,30 @@ const MetricCard = ({ icon: Icon, label, value, sub, colorClass = 'text-accent',
 );
 
 const ChartCard = ({ title, subtitle, data, dataKey, stroke = '#22C55E', fillGradientId = 'accentGrad', unit = '' }) => (
-  <div className="bg-white dark:bg-surface-dark border border-zinc-200/80 dark:border-border-dark p-5 rounded-[20px] flex flex-col shadow-xs">
-    <div className="mb-4">
-      <h3 className="font-heading text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-        <span>{title}</span>
+  <div className="bg-[#131318] border border-[#27272A] p-5 rounded-[16px] flex flex-col">
+    <div className="mb-3">
+      <h3 className="text-sm font-semibold text-white">
+        {title}
       </h3>
-      <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark mt-0.5">
+      <p className="text-xs text-zinc-400 mt-0.5">
         {subtitle}
       </p>
     </div>
-    <div className="h-56 w-full">
+    <div className="h-52 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 10, left: -20, bottom: 0 }}>
+        <AreaChart data={data || []} margin={{ top: 8, right: 10, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id={fillGradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={stroke} stopOpacity={0.3} />
+              <stop offset="5%" stopColor={stroke} stopOpacity={0.2} />
               <stop offset="95%" stopColor={stroke} stopOpacity={0.0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-zinc-200 dark:text-zinc-800" />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272A" />
           <XAxis
             dataKey="date"
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 10, fill: '#71717A' }}
+            tick={{ fontSize: 9, fill: '#71717A' }}
             tickFormatter={(val) => {
               if (!val) return '';
               const parts = val.split('-');
@@ -114,7 +110,7 @@ const ChartCard = ({ title, subtitle, data, dataKey, stroke = '#22C55E', fillGra
           <YAxis
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 10, fill: '#71717A' }}
+            tick={{ fontSize: 9, fill: '#71717A' }}
             allowDecimals={false}
           />
           <Tooltip content={<CustomTooltip unit={unit} />} />
@@ -122,7 +118,7 @@ const ChartCard = ({ title, subtitle, data, dataKey, stroke = '#22C55E', fillGra
             type="monotone"
             dataKey={dataKey}
             stroke={stroke}
-            strokeWidth={2.2}
+            strokeWidth={2}
             fillOpacity={1}
             fill={`url(#${fillGradientId})`}
           />
@@ -131,39 +127,6 @@ const ChartCard = ({ title, subtitle, data, dataKey, stroke = '#22C55E', fillGra
     </div>
   </div>
 );
-
-const EVENT_CONFIG = {
-  new_user_registered: {
-    label: 'User Registered',
-    badge: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    icon: UserPlus
-  },
-  new_website_verified: {
-    label: 'Website Verified',
-    badge: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-    icon: ShieldCheck
-  },
-  crawl_completed: {
-    label: 'Crawl Completed',
-    badge: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
-    icon: CheckCircle2
-  },
-  chatbot_generated: {
-    label: 'Chatbot Generated',
-    badge: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-    icon: Bot
-  },
-  query_answered: {
-    label: 'Query Answered',
-    badge: 'bg-accent/10 text-accent border-accent/20',
-    icon: Zap
-  },
-  query_fell_back: {
-    label: 'Query Fell Back',
-    badge: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
-    icon: AlertTriangle
-  }
-};
 
 const PlatformOverviewTab = ({ data, loading }) => {
   if (loading || !data) {
@@ -179,15 +142,14 @@ const PlatformOverviewTab = ({ data, loading }) => {
             <SkeletonBlock key={i} className="h-64 rounded-2xl" />
           ))}
         </div>
-        <SkeletonBlock className="h-72 rounded-2xl" />
       </div>
     );
   }
 
-  const { metrics, charts, activity_feed } = data;
+  const { metrics = {}, charts = {} } = data || {};
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 font-sans">
       {/* 10 Responsive Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         <MetricCard
@@ -195,8 +157,6 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Total Registered Users"
           value={formatNumber(metrics.total_users)}
           sub="Platform tenants"
-          colorClass="text-blue-500"
-          bgClass="bg-blue-500/10"
           delay={0.02}
         />
         <MetricCard
@@ -204,8 +164,6 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Total Verified Websites"
           value={formatNumber(metrics.total_verified_websites)}
           sub="DNS / Meta verified"
-          colorClass="text-emerald-500"
-          bgClass="bg-emerald-500/10"
           delay={0.04}
         />
         <MetricCard
@@ -213,8 +171,6 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Total Active Chatbots"
           value={formatNumber(metrics.total_active_chatbots)}
           sub="Serving live widgets"
-          colorClass="text-purple-500"
-          bgClass="bg-purple-500/10"
           delay={0.06}
         />
         <MetricCard
@@ -222,8 +178,6 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Total Queries All Time"
           value={formatNumber(metrics.total_queries_all_time)}
           sub="Historical RAG queries"
-          colorClass="text-accent"
-          bgClass="bg-accent/10"
           delay={0.08}
         />
         <MetricCard
@@ -231,26 +185,20 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Total Queries Today"
           value={formatNumber(metrics.total_queries_today)}
           sub="Processed today"
-          colorClass="text-amber-500"
-          bgClass="bg-amber-500/10"
           delay={0.10}
         />
         <MetricCard
           icon={AlertTriangle}
           label="Platform Fallback Rate"
-          value={`${metrics.platform_fallback_rate}%`}
-          sub="Queries that triggered fallback"
-          colorClass="text-rose-500"
-          bgClass="bg-rose-500/10"
+          value={`${metrics.platform_fallback_rate ?? 0}%`}
+          sub="Fallback triggered"
           delay={0.12}
         />
         <MetricCard
           icon={CheckCircle2}
           label="Verified Answer Rate"
-          value={`${metrics.platform_verified_rate}%`}
-          sub="NLI supported entailment"
-          colorClass="text-emerald-400"
-          bgClass="bg-emerald-500/10"
+          value={`${metrics.platform_verified_rate ?? 0}%`}
+          sub="Supported entailment"
           delay={0.14}
         />
         <MetricCard
@@ -258,8 +206,6 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Indexed Chunks"
           value={formatNumber(metrics.total_chunks)}
           sub="Vector knowledge blocks"
-          colorClass="text-cyan-500"
-          bgClass="bg-cyan-500/10"
           delay={0.16}
         />
         <MetricCard
@@ -267,33 +213,29 @@ const PlatformOverviewTab = ({ data, loading }) => {
           label="Total Pages Crawled"
           value={formatNumber(metrics.total_pages_crawled)}
           sub="Extracted web pages"
-          colorClass="text-indigo-500"
-          bgClass="bg-indigo-500/10"
           delay={0.18}
         />
         <MetricCard
           icon={Timer}
           label="Avg Response Time"
-          value={`${metrics.avg_response_time_ms} ms`}
+          value={`${metrics.avg_response_time_ms ?? 0} ms`}
           sub="End-to-end latency"
-          colorClass="text-violet-500"
-          bgClass="bg-violet-500/10"
           delay={0.20}
         />
       </div>
 
       {/* Four Time-Series Line Charts */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="font-heading text-lg font-bold text-zinc-900 dark:text-white">
+            <h2 className="text-base font-bold text-white tracking-tight">
               Platform Growth & Traffic Trends
             </h2>
-            <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark">
-              Daily telemetry metrics across all active tenants and visitor interactions.
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Daily telemetry metrics across active tenants and user interactions.
             </p>
           </div>
-          <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-surface-dark border border-zinc-200 dark:border-border-dark text-txt-secondary-light dark:text-txt-secondary-dark">
+          <span className="text-xs font-medium px-2.5 py-1 rounded-[8px] bg-[#131318] border border-[#27272A] text-zinc-400">
             {charts.range?.toUpperCase() || '30D'} WINDOW
           </span>
         </div>
@@ -336,73 +278,6 @@ const PlatformOverviewTab = ({ data, loading }) => {
             unit="websites"
           />
         </div>
-      </div>
-
-      {/* Live Activity Feed */}
-      <div className="bg-white dark:bg-surface-dark border border-zinc-200/80 dark:border-border-dark rounded-[22px] p-6 shadow-xs">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-accent animate-ping" />
-            <div>
-              <h3 className="font-heading text-base font-bold text-zinc-900 dark:text-white">
-                Platform Live Activity Feed
-              </h3>
-              <p className="text-xs text-txt-secondary-light dark:text-txt-secondary-dark">
-                Last 20 operational events recorded platform-wide in reverse chronological order.
-              </p>
-            </div>
-          </div>
-          <span className="text-[11px] font-bold text-zinc-500 bg-zinc-100 dark:bg-zinc-800/80 px-2.5 py-1 rounded-full">
-            REAL-TIME STREAM
-          </span>
-        </div>
-
-        {(!activity_feed || activity_feed.length === 0) ? (
-          <div className="p-8 text-center text-xs text-txt-secondary-light dark:text-txt-secondary-dark">
-            No recent activity recorded.
-          </div>
-        ) : (
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 max-h-[460px] overflow-y-auto pr-1">
-            {activity_feed.map((ev, idx) => {
-              const cfg = EVENT_CONFIG[ev.event_type] || {
-                label: ev.event_type,
-                badge: 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400',
-                icon: Activity
-              };
-              const Icon = cfg.icon;
-              return (
-                <div
-                  key={idx}
-                  className="py-3 flex items-center justify-between gap-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/20 px-2 rounded-xl transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                      <Icon className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${cfg.badge}`}>
-                          {cfg.label}
-                        </span>
-                        <span className="text-xs font-bold text-zinc-900 dark:text-white truncate">
-                          {ev.entity}
-                        </span>
-                      </div>
-                      {ev.detail && (
-                        <div className="text-[11px] text-txt-secondary-light dark:text-txt-secondary-dark truncate mt-0.5">
-                          "{ev.detail}"
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-[11px] font-mono text-txt-secondary-light dark:text-txt-secondary-dark shrink-0">
-                    {ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     </div>
   );

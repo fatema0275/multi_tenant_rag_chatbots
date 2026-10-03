@@ -198,86 +198,6 @@ def get_platform_overview():
             daily_new_users = [{"date": d, "count": new_users_map.get(d, 0)} for d in date_keys]
             daily_new_websites = [{"date": d, "count": new_websites_map.get(d, 0)} for d in date_keys]
 
-            # 3. Live Activity Feed (last 20 events platform-wide in reverse chronological order)
-            events = []
-
-            # User registrations
-            cur.execute("""
-                SELECT email as entity, created_at, 'new_user_registered' as event_type
-                FROM users
-                WHERE created_at IS NOT NULL
-                ORDER BY created_at DESC LIMIT 20
-            """)
-            events.extend(cur.fetchall())
-
-            # Website verifications
-            cur.execute("""
-                SELECT domain as entity, created_at, 'new_website_verified' as event_type
-                FROM websites
-                WHERE verification_status = 'verified' AND created_at IS NOT NULL
-                ORDER BY created_at DESC LIMIT 20
-            """)
-            events.extend(cur.fetchall())
-
-            # Crawl completed
-            cur.execute("""
-                SELECT w.domain as entity, cj.completed_at as created_at, 'crawl_completed' as event_type
-                FROM crawl_jobs cj
-                JOIN websites w ON cj.website_id = w.id
-                WHERE cj.status = 'completed' AND cj.completed_at IS NOT NULL
-                ORDER BY cj.completed_at DESC LIMIT 20
-            """)
-            events.extend(cur.fetchall())
-
-            # Chatbot generated
-            cur.execute("""
-                SELECT w.domain as entity, cc.created_at, 'chatbot_generated' as event_type
-                FROM chatbot_configs cc
-                JOIN websites w ON cc.website_id = w.id
-                WHERE cc.created_at IS NOT NULL
-                ORDER BY cc.created_at DESC LIMIT 20
-            """)
-            events.extend(cur.fetchall())
-
-            # Query answered & Query fell back
-            cur.execute("""
-                SELECT 
-                    COALESCE(w.domain, 'SiteMind Chatbot') as entity,
-                    ql.created_at,
-                    CASE WHEN ql.fallback_triggered = true THEN 'query_fell_back' ELSE 'query_answered' END as event_type,
-                    ql.query_text
-                FROM query_logs ql
-                LEFT JOIN websites w ON (w.site_id = ql.tenant_id OR w.id::text = ql.tenant_id::text)
-                WHERE ql.created_at IS NOT NULL
-                ORDER BY ql.created_at DESC LIMIT 30
-            """)
-            events.extend(cur.fetchall())
-
-            # Sort combined events DESC and pick top 20
-            def get_timestamp(e):
-                ts = e.get("created_at")
-                if isinstance(ts, datetime):
-                    return ts
-                if isinstance(ts, str):
-                    try:
-                        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    except Exception:
-                        pass
-                return datetime.min.replace(tzinfo=timezone.utc)
-
-            events.sort(key=get_timestamp, reverse=True)
-            top_events = events[:20]
-
-            formatted_events = []
-            for ev in top_events:
-                ts = ev.get("created_at")
-                formatted_events.append({
-                    "event_type": ev.get("event_type"),
-                    "entity": ev.get("entity") or "Unknown entity",
-                    "timestamp": ts.isoformat() if isinstance(ts, datetime) else str(ts or ""),
-                    "detail": ev.get("query_text") or None
-                })
-
     return jsonify({
         "metrics": {
             "total_users": total_users,
@@ -298,7 +218,7 @@ def get_platform_overview():
             "daily_new_users": daily_new_users,
             "daily_new_websites": daily_new_websites
         },
-        "activity_feed": formatted_events
+        "activity_feed": []
     })
 
 

@@ -7,11 +7,7 @@ import {
   Activity,
   BookOpen,
   Zap,
-  LogOut,
-  UserCheck,
-  ChevronRight,
-  ShieldAlert,
-  Server
+  LogOut
 } from 'lucide-react';
 import ThemeToggle from '../ThemeToggle';
 
@@ -24,7 +20,7 @@ export const ADMIN_PAGES = {
   SYSTEM_PERFORMANCE: 'system-performance',
   CONTENT_QUALITY: 'content-quality',
 
-  // Management Section (Existing)
+  // Management Section
   MANAGE_USERS: 'manage-users',
   MANAGE_WEBSITES: 'manage-websites',
 };
@@ -38,8 +34,8 @@ const AdminSidebar = ({
   setIsMobileOpen
 }) => {
   const managementNav = [
-    { id: ADMIN_PAGES.MANAGE_USERS, label: 'User Management', icon: Users, badge: null },
-    { id: ADMIN_PAGES.MANAGE_WEBSITES, label: 'Website Management', icon: Globe, badge: null },
+    { id: ADMIN_PAGES.MANAGE_USERS, label: 'User Management', icon: Users },
+    { id: ADMIN_PAGES.MANAGE_WEBSITES, label: 'Website Management', icon: Globe },
   ];
 
   const analyticsNav = [
@@ -68,38 +64,35 @@ const AdminSidebar = ({
 
       {/* Sidebar container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-white dark:bg-[#111115] border-r border-zinc-200 dark:border-border-dark flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-50 w-60 lg:w-64 bg-[#131318] border-r border-[#27272A] flex flex-col font-sans transition-transform duration-300 ease-in-out lg:translate-x-0 ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Brand header */}
-        <div className="h-16 px-5 border-b border-zinc-200 dark:border-border-dark flex items-center justify-between">
+        <div className="px-5 pt-4 pb-3 border-b border-[#27272A]/40 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center shadow-md shadow-accent/20">
-              <Zap className="w-4 h-4 text-[#09090B]" strokeWidth={2.5} />
+            <div className="w-8 h-8 rounded-[10px] bg-[#22C55E] flex items-center justify-center shadow-sm">
+              <Zap className="w-4.5 h-4.5 text-[#09090B]" strokeWidth={2.5} />
             </div>
-            <div className="flex flex-col">
-              <span className="font-heading font-bold text-base tracking-tight text-zinc-900 dark:text-white leading-tight">
-                Site<span className="text-accent">Mind</span>
+            <div>
+              <span className="font-bold text-lg tracking-tight text-white">
+                Site<span className="text-[#22C55E]">Mind</span>
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
+              <span className="block text-[11px] font-medium text-zinc-400 -mt-0.5">
                 Admin Console
               </span>
             </div>
           </div>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/10 text-accent border border-accent/20">
-            ROOT
-          </span>
         </div>
 
         {/* Navigation list */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+        <div className="flex-1 overflow-y-auto py-3 space-y-4">
           {/* Section: Management */}
           <div>
-            <div className="px-3 mb-2 text-[11px] font-bold uppercase tracking-wider text-txt-secondary-light dark:text-txt-secondary-dark flex items-center gap-1.5">
-              <span>Administration</span>
+            <div className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              Administration
             </div>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {managementNav.map((item) => {
                 const Icon = item.icon;
                 const isActive = activePage === item.id;
@@ -107,17 +100,14 @@ const AdminSidebar = ({
                   <button
                     key={item.id}
                     onClick={() => handleSelect(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all text-left ${
                       isActive
-                        ? 'bg-accent/10 text-accent font-bold border border-accent/25 shadow-sm'
-                        : 'text-txt-secondary-light dark:text-txt-secondary-dark hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-surface-dark/60'
+                        ? 'border-l-[3px] border-[#22C55E] text-white bg-[#1C1C24]'
+                        : 'border-l-[3px] border-transparent text-zinc-400 hover:text-white hover:bg-[#1C1C24]/60'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-accent' : 'opacity-70'}`} />
-                      <span>{item.label}</span>
-                    </div>
-                    {isActive && <ChevronRight className="w-3.5 h-3.5 text-accent" />}
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
@@ -126,13 +116,10 @@ const AdminSidebar = ({
 
           {/* Section: Dedicated Analytics */}
           <div>
-            <div className="px-3 mb-2 text-[11px] font-bold uppercase tracking-wider text-txt-secondary-light dark:text-txt-secondary-dark flex items-center justify-between">
-              <span>Platform Analytics</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-mono">
-                OVERHAUL
-              </span>
+            <div className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+              Platform Analytics
             </div>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {analyticsNav.map((item) => {
                 const Icon = item.icon;
                 const isActive = activePage === item.id;
@@ -140,17 +127,14 @@ const AdminSidebar = ({
                   <button
                     key={item.id}
                     onClick={() => handleSelect(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all text-left ${
                       isActive
-                        ? 'bg-accent text-zinc-950 font-bold shadow-md shadow-accent/25'
-                        : 'text-txt-secondary-light dark:text-txt-secondary-dark hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-surface-dark/60'
+                        ? 'border-l-[3px] border-[#22C55E] text-white bg-[#1C1C24]'
+                        : 'border-l-[3px] border-transparent text-zinc-400 hover:text-white hover:bg-[#1C1C24]/60'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-zinc-950' : 'opacity-70'}`} />
-                      <span>{item.label}</span>
-                    </div>
-                    {isActive && <ChevronRight className="w-3.5 h-3.5 text-zinc-950" />}
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
@@ -159,19 +143,18 @@ const AdminSidebar = ({
         </div>
 
         {/* Sidebar Footer: Admin User & Theme & Logout */}
-        <div className="p-3 border-t border-zinc-200 dark:border-border-dark bg-zinc-50/50 dark:bg-[#0c0c0f]">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-surface-dark border border-zinc-200/60 dark:border-border-dark mb-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-accent/15 text-accent flex items-center justify-center font-bold text-xs shrink-0">
+        <div className="p-4 border-t border-[#27272A] bg-[#0E0E12] mt-auto">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-[#22C55E]/15 border border-[#22C55E]/30 flex items-center justify-center text-xs font-bold text-[#22C55E] shrink-0">
                 {(user?.name || user?.email || 'A').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-zinc-900 dark:text-white truncate">
+                <div className="text-xs font-medium text-white truncate max-w-[130px]">
                   {user?.name || user?.email?.split('@')[0]}
                 </div>
-                <div className="text-[10px] text-accent font-semibold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                  Admin Role
+                <div className="text-[11px] text-zinc-400">
+                  Administrator
                 </div>
               </div>
             </div>
@@ -180,7 +163,7 @@ const AdminSidebar = ({
 
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-[8px] text-xs font-medium text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
