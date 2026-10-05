@@ -216,7 +216,7 @@ def _notify_node_backend(
     try:
         import os, requests
         node_backend_url = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
-        requests.post(
+        resp = requests.post(
             f"{node_backend_url}/api/websites/{website_id}/store-chunks",
             json={
                 "siteId": site_id,
@@ -225,10 +225,14 @@ def _notify_node_backend(
                 "pageText": text,
                 "domSelector": None,
             },
-            timeout=15,
+            timeout=300,
         )
+        if resp.status_code != 200:
+            logger.error("Failed to store chunks for %s (HTTP %d): %s", url, resp.status_code, resp.text[:200])
+            raise RuntimeError(f"Backend returned HTTP {resp.status_code}")
     except Exception as kb_err:
         logger.error("Failed to store chunks for %s: %s", url, kb_err)
+        raise
 
 
 def _process_page(
