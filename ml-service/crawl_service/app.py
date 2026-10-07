@@ -80,7 +80,7 @@ def create_app() -> Flask:
     def serve_static(filename):
         response = send_from_directory(app.static_folder, filename)
         if filename.endswith(".js"):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return response
 
     # ------------------------------------------------------------------ #

@@ -418,21 +418,63 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
     }
   } catch (_) {}
 
-  // 4. Stage 2: Retrieve Chunks using Materialized Subquery + Hybrid RAG Search (Vector + Keyword)
+  // 4. Stage 2: Retrieve Chunks using Materialized Subquery + Dynamic Hybrid RAG Search (Vector + Academic/Keyword Boost)
   //
-  // NOTE: pgvector HNSW/IVFFlat indexes perform an ANN scan globally before applying WHERE clauses,
-  // returning 0 rows for site-specific queries. "OFFSET 0" forces PostgreSQL to materialize 
-  // the tenant's filtered chunks first before ordering by vector/hybrid distance.
-  const keywords = query.split(/\s+/)
-    .map(w => w.replace(/[^a-zA-Z0-9]/g, ''))
-    .filter(w => w.length >= 4 && !['tell', 'have', 'this', 'that', 'what', 'some', 'with', 'about', 'your'].includes(w.toLowerCase()));
+  // Extract academic years (e.g. 2023-24, 2024-25, 2025-26, 2022-23)
+  const yearMatch = query.match(/\b(20\d{2}[-_/]\d{2,4}|20\d{2})\b/);
+  const yearTerm = yearMatch ? yearMatch[1].replace('/', '-') : null;
 
-  const kw1 = keywords[0] ? `%${keywords[0]}%` : '%';
-  const kw2 = keywords[1] ? `%${keywords[1]}%` : '%';
+  // Extract academic and course acronyms / levels (e.g. CE, IT, CSE, AIML, BTech, MTech, PG, FY, Semester 1/2)
+  const acronymMatches = query.match(/\b(ce|it|cse|aiml|ai[- ]?ml|b\.?tech|m\.?tech|pg|ug|fy|sy|ty|first\s*year|second\s*year|third\s*year|final\s*year|sem(?:ester)?\s*[12345678]|semester)\b/gi) || [];
+
+  // Check syllabus / curriculum intent
+  const hasSubjectIntent = /\b(subjects?|courses?|syllabus|curriculums?|modules?|electives?|pedagogy|credits?|teaching\s*scheme)\b/i.test(query);
+
+  // General significant keywords (keep hyphens and numbers intact)
+  const rawWords = query.toLowerCase().match(/[a-zA-Z0-9_-]{3,}/g) || [];
+  const stopWords = new Set(['what', 'tell', 'have', 'this', 'that', 'some', 'with', 'about', 'your', 'from', 'when', 'which', 'where', 'covered', 'are', 'does', 'give', 'list', 'show', 'for', 'can', 'you']);
+  const keywords = rawWords.filter(w => !stopWords.has(w));
+
+  const replacements = {
+    vectorStr: `[${queryEmbedding.join(',')}]`,
+    tenantId,
+    siteId: resolvedSiteId,
+    webId: resolvedWebId,
+  };
+
+  const scoreClauses = ['(1 - (embedding <=> :vectorStr::vector))'];
+
+  if (yearTerm) {
+    scoreClauses.push('(CASE WHEN page_title ILIKE :yearPat THEN 0.60 ELSE 0 END)');
+    scoreClauses.push('(CASE WHEN content ILIKE :yearPat THEN 0.35 ELSE 0 END)');
+    replacements.yearPat = `%${yearTerm}%`;
+  }
+
+  if (hasSubjectIntent) {
+    scoreClauses.push(`(CASE 
+      WHEN content ILIKE '%course code%' OR content ILIKE '%elective%' OR content ILIKE '%teaching scheme%' THEN 0.60
+      WHEN content ILIKE '%course%' OR content ILIKE '%subject%' OR content ILIKE '%syllabus%' THEN 0.35
+      ELSE 0
+    END)`);
+    scoreClauses.push(`(CASE WHEN page_title ILIKE '%syllabus%' OR page_title ILIKE '%booklet%' THEN 0.35 ELSE 0 END)`);
+  }
+
+  acronymMatches.slice(0, 3).forEach((acr, i) => {
+    const key = `acr_${i}`;
+    scoreClauses.push(`(CASE WHEN page_title ILIKE :${key} THEN 0.45 WHEN content ILIKE :${key} THEN 0.25 ELSE 0 END)`);
+    replacements[key] = `%${acr.trim()}%`;
+  });
+
+  keywords.slice(0, 4).forEach((kw, i) => {
+    const key = `kw_${i}`;
+    scoreClauses.push(`(CASE WHEN content ILIKE :${key} THEN 0.20 WHEN page_title ILIKE :${key} THEN 0.20 ELSE 0 END)`);
+    replacements[key] = `%${kw.trim()}%`;
+  });
+
+  const hybridScoreSql = scoreClauses.join(' + \n          ');
 
   let retrievedChunks = [];
   try {
-    const vectorString = `[${queryEmbedding.join(',')}]`;
     const [rows] = await sequelize.query(
       `WITH tenant_chunks AS (
          SELECT id, content, embedding, page_title, page_url
@@ -444,19 +486,23 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
             OR site_id::text = :siteId
             OR website_id::text = :webId
          OFFSET 0
+       ),
+       scored AS (
+         SELECT id, content, page_title, page_url,
+                1 - (embedding <=> :vectorStr::vector) AS similarity,
+                (${hybridScoreSql}) AS hybrid_score
+         FROM tenant_chunks
+       ),
+       deduped AS (
+         SELECT DISTINCT ON (LEFT(content, 100)) id, content, page_title, page_url, similarity, hybrid_score
+         FROM scored
+         ORDER BY LEFT(content, 100), hybrid_score DESC
        )
-       SELECT id, content, page_title, page_url, 1 - (embedding <=> :vectorStr::vector) AS similarity,
-         (
-           (1 - (embedding <=> :vectorStr::vector)) + 
-           (CASE WHEN content ILIKE :kw1 THEN 0.4 ELSE 0 END) +
-           (CASE WHEN page_title ILIKE :kw1 THEN 0.4 ELSE 0 END) +
-           (CASE WHEN content ILIKE :kw2 THEN 0.2 ELSE 0 END) +
-           (CASE WHEN page_title ILIKE :kw2 THEN 0.2 ELSE 0 END)
-         ) AS hybrid_score
-       FROM tenant_chunks
+       SELECT id, content, page_title, page_url, similarity, hybrid_score
+       FROM deduped
        ORDER BY hybrid_score DESC
-       LIMIT 5`,
-      { replacements: { vectorStr: vectorString, tenantId, siteId: resolvedSiteId, webId: resolvedWebId, kw1, kw2 } }
+       LIMIT 10`,
+      { replacements }
     );
     retrievedChunks = rows;
     console.log(`[Chat Stage 2] Retrieved ${rows.length} chunks for tenantId=${tenantId} (siteId=${resolvedSiteId}, webId=${resolvedWebId})`);
@@ -478,7 +524,7 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
          FROM chunks
          WHERE tenant_id::text = :tenantId OR site_id::text = :tenantId OR website_id::text = :tenantId OR website_id::text = :webId
          ORDER BY id ASC
-         LIMIT 5`,
+         LIMIT 6`,
         { replacements: { tenantId, webId: resolvedWebId } }
       );
       if (overviewRows.length > 0) {
@@ -501,15 +547,14 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
 
 Response Guidelines:
 1. Tone & Structure:
-   - For basic or overview questions (such as "what is [Company]?", "who are you?", "tell me about your services", "what do you do?"):
-     * Begin with a welcoming, crisp 1-2 sentence definition or overview.
-     * When listing services, key capabilities, or offerings, present them as clean bullet points with EACH bullet on its own new line (using "- ").
-     * Mention essential info (like headquarters, founded year, or primary focus) naturally.
+   - Provide direct, clear, and well-structured answers.
+   - When listing courses, subjects, offerings, or services, format them as clean bullet points with EACH bullet on its own new line (using "- ").
+   - When describing academic or curriculum details, mention course codes, subject titles, and departments/faculties where available.
    - Separate distinct topics or paragraphs with double line breaks for easy readability in a compact chat window.
-   - Avoid run-on sentences or cramming multiple list items together on the same line.
 2. Grounding & Boundaries:
    - Answer strictly using the verified context passages. Do not invent facts, speculate, or mention external information.
    - Never output bracketed source markers like "[Context 1]" or "[Source 1]" in your final answer text.
+   - Do NOT output internal document filenames (such as "[Drive] filename.pdf" or "filename.pdf") or raw URLs in your response text unless the visitor explicitly asked where to download or find a file.
    - If the context does not contain enough information to answer, state politely: "I don't have enough verified information on that topic in our website knowledge base. Please contact our support team for more details."`;
 
   const userPrompt = `Context passages from this website:
@@ -590,24 +635,18 @@ Cleanly formatted answer:`;
   }
 
   // 7. Determine whether citation links should be attached:
-  // - Omit sources for broad overview, introductory, or basic factual questions ("what is X", "who are you", "what do you do", "tell me about", greetings) to prevent link clutter on the host page.
-  // - Only provide sources if:
-  //   1) The visitor explicitly asks for links/sources/documentation/pages (e.g. "where can I read your policy", "link to pricing", "where is documentation").
-  //   2) The query is a deep specific question where chunks have high similarity (>= 0.65).
-  const isExplicitLinkRequest = /(link|url|source|where can i (find|read|see|download)|page|documentation|docs|whitepaper|pdf|policy|terms|pricing|contact)/i.test(query);
-
-  const isBasicOrOverview = /^(what is|who is|who are|tell me about|what does|describe|overview of|summary of|what do you do|what are your services|services offered|who founded|when was|where is your office|where are you located)/i.test(query.trim().toLowerCase());
+  // - Omit sources for broad overview, introductory, or basic factual questions to prevent link clutter on the host page.
+  // - ONLY provide sources if:
+  //   1) The visitor explicitly asks for links/sources/documentation/downloads (e.g. "where can I read your policy", "link to pricing", "where is documentation", "download pdf").
+  //   2) The generated answer is NOT a fallback or refusal.
+  const isExplicitLinkRequest = /(link|url|source|where can i (find|read|see|download)|download|page|documentation|docs|whitepaper|pdf|policy|terms|pricing|contact)/i.test(query);
+  const isFallbackOrRefusal = !generatedAnswer || 
+    generatedAnswer.includes("I don't have enough verified information") || 
+    generatedAnswer.includes("contact our support team");
 
   let sourcesToReturn = [];
-  if (isExplicitLinkRequest) {
+  if (isExplicitLinkRequest && !isFallbackOrRefusal) {
     sourcesToReturn = passingChunks.slice(0, 2).map(c => ({
-      chunk_id: c.id,
-      similarity: parseFloat(c.similarity)
-    }));
-  } else if (!isBasicOrOverview) {
-    // Only return top relevant chunks if they have high similarity
-    const confidentChunks = passingChunks.filter(c => parseFloat(c.similarity) >= 0.65);
-    sourcesToReturn = confidentChunks.slice(0, 2).map(c => ({
       chunk_id: c.id,
       similarity: parseFloat(c.similarity)
     }));

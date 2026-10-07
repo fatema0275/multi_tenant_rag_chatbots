@@ -43,6 +43,37 @@ const WidgetLivePreview = ({
   const [isTyping, setIsTyping] = useState(false);
   const messagesContainerRef = useRef(null);
 
+  // Resizable panel dimensions for desktop preview
+  const [panelWidth, setPanelWidth] = useState(285);
+  const [panelHeight, setPanelHeight] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleStartResize = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = panelWidth;
+    const startH = panelHeight;
+    setIsResizing(true);
+
+    const onMouseMove = (moveE) => {
+      const deltaY = startY - moveE.clientY;
+      const deltaX = widgetPosition === 'bottom-left' ? (moveE.clientX - startX) : (startX - moveE.clientX);
+      setPanelWidth(Math.max(250, Math.min(460, startW + deltaX)));
+      setPanelHeight(Math.max(240, Math.min(380, startH + deltaY)));
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
   // Reset conversation when site or greeting changes
   useEffect(() => {
     setMessages([
@@ -221,11 +252,30 @@ const WidgetLivePreview = ({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 12, scale: 0.96 }}
                   transition={{ duration: 0.16, ease: 'easeOut' }}
-                  style={{ backgroundColor }}
+                  style={{
+                    backgroundColor,
+                    width: `${panelWidth}px`,
+                    height: `${panelHeight}px`,
+                  }}
                   className={`absolute bottom-[66px] ${
                     isLeft ? 'left-3.5' : 'right-3.5'
-                  } w-[285px] rounded-[18px] shadow-2xl flex flex-col overflow-hidden z-20 border border-black/15`}
+                  } rounded-[18px] shadow-2xl flex flex-col overflow-hidden z-20 border border-black/15 transition-[width,height] ${
+                    isResizing ? '!transition-none select-none' : ''
+                  }`}
                 >
+                  {/* Top-corner resize handle (invisible, cursor-feedback only) */}
+                  <div
+                    onMouseDown={handleStartResize}
+                    onDoubleClick={() => {
+                      setPanelWidth(285);
+                      setPanelHeight(320);
+                    }}
+                    title="Drag to resize widget (Double-click to reset)"
+                    className={`absolute top-0 ${
+                      isLeft ? 'right-0 cursor-nesw-resize' : 'left-0 cursor-nwse-resize'
+                    } w-6 h-6 z-30`}
+                  />
+
                   {/* Panel Header */}
                   <div
                     style={{ backgroundColor: themeColor }}
@@ -265,7 +315,7 @@ const WidgetLivePreview = ({
                   {/* Messages list with contained internal scroll */}
                   <div
                     ref={messagesContainerRef}
-                    className="p-3 overflow-y-auto space-y-2 max-h-[190px] min-h-[130px]"
+                    className="p-3 overflow-y-auto space-y-2 flex-1 min-h-[100px]"
                   >
                     {messages.map((m) => (
                       <div

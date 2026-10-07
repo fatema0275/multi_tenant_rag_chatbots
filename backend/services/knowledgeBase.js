@@ -79,6 +79,23 @@ async function storePageChunks({ siteId, websiteId, pageUrl, pageTitle, pageText
       replacements[textSnippetKey] = item.chunk.textSnippet || item.chunk.chunkText.slice(0, 120);
     });
 
+    // Clear existing chunks for this specific pageUrl to prevent duplicate accumulation
+    if (resolvedSiteId || websiteId) {
+      await sequelize.query(
+        `DELETE FROM document_chunks
+         WHERE (site_id = :siteId OR website_id = :websiteId)
+           AND page_url = :delPageUrl`,
+        {
+          replacements: {
+            siteId: resolvedSiteId || null,
+            websiteId: websiteId || null,
+            delPageUrl: pageUrl,
+          },
+          transaction: t,
+        }
+      );
+    }
+
     const insertSql = `
       INSERT INTO document_chunks (site_id, website_id, page_url, page_title, chunk_text, embedding, dom_selector, text_snippet)
       VALUES ${valuesClauses.join(', ')};

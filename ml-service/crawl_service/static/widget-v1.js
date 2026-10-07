@@ -237,10 +237,12 @@
       .sm-panel {
         position: fixed !important;
         ${panelPosCss}
-        width: 380px !important;
-        max-width: calc(100vw - 40px) !important;
-        height: 580px !important;
-        max-height: calc(100vh - 110px) !important;
+        width: var(--sm-panel-w, 380px) !important;
+        min-width: 300px !important;
+        max-width: calc(100vw - 30px) !important;
+        height: var(--sm-panel-h, 580px) !important;
+        min-height: 360px !important;
+        max-height: calc(100vh - 90px) !important;
         border-radius: 18px !important;
         background-color: ${bg} !important;
         box-shadow: 0 12px 48px rgba(0, 0, 0, 0.22) !important;
@@ -259,6 +261,51 @@
         opacity: 1 !important;
         transform: translateY(0) scale(1) !important;
         pointer-events: auto !important;
+      }
+
+      .sm-panel.sm-resizing {
+        transition: none !important;
+        user-select: none !important;
+        -webkit-user-select: none !important;
+      }
+
+      /* Resizable window hitboxes (completely invisible, cursor feedback only) */
+      .sm-resize-top {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 48px !important;
+        height: 12px !important;
+        cursor: ns-resize !important;
+        z-index: 99990 !important;
+        background: transparent !important;
+        touch-action: none !important;
+      }
+
+      .sm-resize-side {
+        position: absolute !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        ${isLeft ? 'right: 0 !important;' : 'left: 0 !important;'}
+        width: 12px !important;
+        cursor: ew-resize !important;
+        z-index: 99990 !important;
+        background: transparent !important;
+        touch-action: none !important;
+      }
+
+      .sm-resize-corner {
+        position: absolute !important;
+        top: 0 !important;
+        ${isLeft ? 'right: 0 !important;' : 'left: 0 !important;'}
+        width: 24px !important;
+        height: 24px !important;
+        cursor: ${isLeft ? 'nesw-resize' : 'nwse-resize'} !important;
+        z-index: 99999 !important;
+        background: transparent !important;
+        border: none !important;
+        outline: none !important;
+        touch-action: none !important;
       }
 
       .sm-header {
@@ -310,6 +357,8 @@
       }
 
       .sm-close-btn {
+        position: relative !important;
+        z-index: 100000 !important;
         background: transparent !important;
         border: none !important;
         color: #ffffff !important;
@@ -615,6 +664,10 @@
       </button>
 
       <div class="sm-panel" id="sm-panel">
+        <div class="sm-resize-top" id="sm-resize-top" title="Drag to resize height"></div>
+        <div class="sm-resize-side" id="sm-resize-side" title="Drag to resize width"></div>
+        <div class="sm-resize-corner" id="sm-resize-corner" title="Drag corner to resize"></div>
+
         <div class="sm-header">
           <div class="sm-header-brand">
             ${logoHtml}
@@ -737,7 +790,12 @@
           var linkEl = document.createElement('a');
           linkEl.className = 'sm-source-link';
           linkEl.href = src.page_url;
-          var displayTitle = src.page_title || src.page_url;
+          var rawTitle = src.page_title || src.page_url || 'Source';
+          var displayTitle = String(rawTitle)
+            .replace(/^\[Drive\]\s*/i, '')
+            .replace(/\.pdf$/i, '')
+            .replace(/[-_]+/g, ' ')
+            .trim() || rawTitle;
           linkEl.title = displayTitle;
           linkEl.textContent = displayTitle;
           linkEl.target = '_blank';
@@ -745,27 +803,30 @@
 
           itemEl.appendChild(linkEl);
 
-          // Highlight button for ALL sources (navigates & highlights)
-          var btnEl = document.createElement('button');
-          btnEl.className = 'sm-source-btn';
-          btnEl.title = 'Highlight on page';
-          btnEl.setAttribute('aria-label', 'Highlight on page');
-          btnEl.innerHTML = `
-            <svg viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="8" stroke-width="2"/>
-              <circle cx="12" cy="12" r="3" stroke-width="2"/>
-              <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
-            </svg>
-            Highlight
-          `;
+          // Only render Highlight button if dom_selector exists and it is not an external Drive or standalone PDF
+          var isDriveOrPdf = (src.page_url && (src.page_url.indexOf('drive.google.com') !== -1 || src.page_url.toLowerCase().indexOf('.pdf') !== -1));
+          if (src.dom_selector && !isDriveOrPdf) {
+            var btnEl = document.createElement('button');
+            btnEl.className = 'sm-source-btn';
+            btnEl.title = 'Highlight on page';
+            btnEl.setAttribute('aria-label', 'Highlight on page');
+            btnEl.innerHTML = `
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" stroke-width="2"/>
+                <circle cx="12" cy="12" r="3" stroke-width="2"/>
+                <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3" stroke-width="2"/>
+              </svg>
+              Highlight
+            `;
 
-          btnEl.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            handleSourceHighlightClick(src);
-          });
+            btnEl.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSourceHighlightClick(src);
+            });
 
-          itemEl.appendChild(btnEl);
+            itemEl.appendChild(btnEl);
+          }
           sourcesContainer.appendChild(itemEl);
         });
 
@@ -817,6 +878,148 @@
         sendMessage();
       }
     });
+
+    // Initialize resizable window functionality
+    setupPanelResize(panel);
+  }
+
+  function setupPanelResize(panel) {
+    var resizeCorner = shadowRoot.getElementById('sm-resize-corner');
+    var resizeTop = shadowRoot.getElementById('sm-resize-top');
+    var resizeSide = shadowRoot.getElementById('sm-resize-side');
+    if (!panel) return;
+
+    var isLeft = config.position === 'bottom-left';
+    var storageKeyW = 'sm_panel_w_' + (config.website_name || 'default');
+    var storageKeyH = 'sm_panel_h_' + (config.website_name || 'default');
+
+    // Restore saved custom dimensions on desktop
+    try {
+      var savedW = localStorage.getItem(storageKeyW);
+      var savedH = localStorage.getItem(storageKeyH);
+      if (savedW && savedH && window.innerWidth > 600) {
+        var parsedW = parseInt(savedW, 10);
+        var parsedH = parseInt(savedH, 10);
+        if (parsedW >= 300 && parsedW <= (window.innerWidth - 30)) {
+          panel.style.setProperty('--sm-panel-w', parsedW + 'px');
+          panel.style.setProperty('width', parsedW + 'px', 'important');
+        }
+        if (parsedH >= 360 && parsedH <= (window.innerHeight - 90)) {
+          panel.style.setProperty('--sm-panel-h', parsedH + 'px');
+          panel.style.setProperty('height', parsedH + 'px', 'important');
+        }
+      }
+    } catch (_) {}
+
+    // Double-click on corner handle resets to default dimensions
+    if (resizeCorner) {
+      resizeCorner.addEventListener('dblclick', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        panel.style.removeProperty('--sm-panel-w');
+        panel.style.removeProperty('--sm-panel-h');
+        panel.style.removeProperty('width');
+        panel.style.removeProperty('height');
+        try {
+          localStorage.removeItem(storageKeyW);
+          localStorage.removeItem(storageKeyH);
+        } catch (_) {}
+      });
+    }
+
+    function initDrag(handleEl, handleType) {
+      if (!handleEl) return;
+
+      var isPointerActive = false;
+      var activePointerId = null;
+      var startX = 0;
+      var startY = 0;
+      var startW = 0;
+      var startH = 0;
+
+      function onPointerMove(e) {
+        if (!isPointerActive) return;
+        e.preventDefault();
+
+        // Moving cursor UP (smaller screen Y) increases window height
+        var deltaY = startY - e.clientY;
+        // Moving cursor away from dock corner increases window width
+        var deltaX = isLeft ? (e.clientX - startX) : (startX - e.clientX);
+
+        var minW = 300;
+        var maxW = Math.min(900, window.innerWidth - 30);
+        var minH = 360;
+        var maxH = Math.min(920, window.innerHeight - 90);
+
+        if (handleType === 'corner' || handleType === 'side') {
+          var newW = Math.max(minW, Math.min(maxW, Math.round(startW + deltaX)));
+          panel.style.setProperty('--sm-panel-w', newW + 'px');
+          panel.style.setProperty('width', newW + 'px', 'important');
+        }
+
+        if (handleType === 'corner' || handleType === 'top') {
+          var newH = Math.max(minH, Math.min(maxH, Math.round(startH + deltaY)));
+          panel.style.setProperty('--sm-panel-h', newH + 'px');
+          panel.style.setProperty('height', newH + 'px', 'important');
+        }
+      }
+
+      function onPointerEnd(e) {
+        if (!isPointerActive) return;
+        isPointerActive = false;
+
+        panel.classList.remove('sm-resizing');
+        document.body.style.removeProperty('user-select');
+        document.body.style.removeProperty('-webkit-user-select');
+
+        if (activePointerId !== null && handleEl.releasePointerCapture) {
+          try {
+            handleEl.releasePointerCapture(activePointerId);
+          } catch (_) {}
+          activePointerId = null;
+        }
+
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerEnd);
+        window.removeEventListener('pointercancel', onPointerEnd);
+
+        try {
+          localStorage.setItem(storageKeyW, String(panel.offsetWidth));
+          localStorage.setItem(storageKeyH, String(panel.offsetHeight));
+        } catch (_) {}
+      }
+
+      handleEl.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        isPointerActive = true;
+        activePointerId = e.pointerId;
+        startX = e.clientX;
+        startY = e.clientY;
+        startW = panel.offsetWidth;
+        startH = panel.offsetHeight;
+
+        panel.classList.add('sm-resizing');
+        document.body.style.userSelect = 'none';
+        document.body.style.webkitUserSelect = 'none';
+
+        if (handleEl.setPointerCapture) {
+          try {
+            handleEl.setPointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+
+        window.addEventListener('pointermove', onPointerMove, { passive: false });
+        window.addEventListener('pointerup', onPointerEnd);
+        window.addEventListener('pointercancel', onPointerEnd);
+      });
+    }
+
+    initDrag(resizeCorner, 'corner');
+    initDrag(resizeTop, 'top');
+    initDrag(resizeSide, 'side');
   }
 
   function sendMessage() {
