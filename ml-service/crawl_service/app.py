@@ -40,10 +40,11 @@ def create_app() -> Flask:
     # ------------------------------------------------------------------ #
     # Rate Limiting Policies for Public Widget Endpoints (Module 4)       #
     # ------------------------------------------------------------------ #
-    from crawl_service.routes.widget import get_public_widget_config, public_widget_query
+    from crawl_service.routes.widget import get_public_widget_config, public_widget_query, submit_widget_feedback
 
     limiter.limit("120 per minute")(get_public_widget_config)
     limiter.limit("30 per minute")(public_widget_query)
+    limiter.limit("10 per minute")(submit_widget_feedback)
 
     @app.errorhandler(429)
     def ratelimit_handler(e):

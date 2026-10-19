@@ -646,6 +646,92 @@
         fill: none !important;
         stroke: currentColor !important;
       }
+
+      /* Feedback Buttons (Module 9) */
+      .sm-feedback-row {
+        margin-top: 8px !important;
+        padding-top: 6px !important;
+        border-top: 1px solid rgba(0, 0, 0, 0.07) !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+      }
+
+      .sm-feedback-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 24px !important;
+        height: 24px !important;
+        padding: 0 !important;
+        background-color: transparent !important;
+        border: 1px solid rgba(0, 0, 0, 0.12) !important;
+        border-radius: 6px !important;
+        color: rgba(0, 0, 0, 0.45) !important;
+        cursor: pointer !important;
+        transition: all 0.15s ease !important;
+      }
+
+      .sm-feedback-btn svg {
+        width: 13px !important;
+        height: 13px !important;
+        fill: none !important;
+        stroke: currentColor !important;
+        stroke-width: 2 !important;
+      }
+
+      .sm-feedback-btn:hover:not(:disabled) {
+        transform: scale(1.08) !important;
+      }
+
+      .sm-feedback-up:hover:not(:disabled) {
+        color: #16a34a !important;
+        border-color: #16a34a !important;
+        background-color: rgba(22, 163, 74, 0.08) !important;
+      }
+
+      .sm-feedback-down:hover:not(:disabled) {
+        color: #dc2626 !important;
+        border-color: #dc2626 !important;
+        background-color: rgba(220, 38, 38, 0.08) !important;
+      }
+
+      .sm-feedback-up.sm-feedback-selected {
+        color: #ffffff !important;
+        background-color: #16a34a !important;
+        border-color: #16a34a !important;
+      }
+
+      .sm-feedback-up.sm-feedback-selected svg {
+        fill: #ffffff !important;
+      }
+
+      .sm-feedback-down.sm-feedback-selected {
+        color: #ffffff !important;
+        background-color: #dc2626 !important;
+        border-color: #dc2626 !important;
+      }
+
+      .sm-feedback-down.sm-feedback-selected svg {
+        fill: #ffffff !important;
+      }
+
+      .sm-feedback-btn:disabled {
+        cursor: default !important;
+        opacity: 0.6 !important;
+      }
+
+      .sm-feedback-btn.sm-feedback-selected:disabled {
+        opacity: 1 !important;
+      }
+
+      .sm-feedback-thanks {
+        font-size: 11px !important;
+        color: rgba(0, 0, 0, 0.55) !important;
+        font-style: italic !important;
+        display: none;
+        margin-left: 2px !important;
+      }
     `;
 
     var logoHtml = config.logo_url
@@ -755,11 +841,12 @@
           btn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
-            if (isSameDomain(link.url)) {
-              window.location.href = link.url;
-            } else {
-              window.open(link.url, '_blank', 'noopener,noreferrer');
-            }
+            handleSourceHighlightClick({
+              page_url: link.url,
+              dom_selector: link.dom_selector,
+              text_snippet: link.text_snippet,
+              page_title: link.label
+            });
           });
 
           navList.appendChild(btn);
@@ -803,9 +890,9 @@
 
           itemEl.appendChild(linkEl);
 
-          // Only render Highlight button if dom_selector exists and it is not an external Drive or standalone PDF
+          // Render Highlight button for any HTML source on the site
           var isDriveOrPdf = (src.page_url && (src.page_url.indexOf('drive.google.com') !== -1 || src.page_url.toLowerCase().indexOf('.pdf') !== -1));
-          if (src.dom_selector && !isDriveOrPdf) {
+          if ((src.dom_selector || src.text_snippet || src.page_title || src.page_url) && !isDriveOrPdf) {
             var btnEl = document.createElement('button');
             btnEl.className = 'sm-source-btn';
             btnEl.title = 'Highlight on page';
@@ -832,9 +919,115 @@
 
         el.appendChild(sourcesContainer);
       }
+
+      // Render Feedback Row (Module 9)
+      var effectiveMsgId = msg.message_id || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+      msg.message_id = effectiveMsgId;
+      msg.id = effectiveMsgId;
+
+      var feedbackRow = document.createElement('div');
+      feedbackRow.className = 'sm-feedback-row';
+
+      var upBtn = document.createElement('button');
+      upBtn.className = 'sm-feedback-btn sm-feedback-up';
+      upBtn.title = 'Helpful answer';
+      upBtn.setAttribute('aria-label', 'Thumbs up');
+      upBtn.innerHTML = `
+        <svg viewBox="0 0 24 24">
+          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+        </svg>
+      `;
+
+      var downBtn = document.createElement('button');
+      downBtn.className = 'sm-feedback-btn sm-feedback-down';
+      downBtn.title = 'Unhelpful answer';
+      downBtn.setAttribute('aria-label', 'Thumbs down');
+      downBtn.innerHTML = `
+        <svg viewBox="0 0 24 24">
+          <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+        </svg>
+      `;
+
+      var thanksLabel = document.createElement('span');
+      thanksLabel.className = 'sm-feedback-thanks';
+      thanksLabel.textContent = 'Thanks for your feedback';
+
+      // Check if already rated in persistent history
+      if (msg.feedbackRating === 'up') {
+        upBtn.classList.add('sm-feedback-selected');
+        upBtn.disabled = true;
+        downBtn.disabled = true;
+        thanksLabel.style.display = 'inline';
+      } else if (msg.feedbackRating === 'down') {
+        downBtn.classList.add('sm-feedback-selected');
+        upBtn.disabled = true;
+        downBtn.disabled = true;
+        thanksLabel.style.display = 'inline';
+      }
+
+      upBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        submitFeedbackClick('up', upBtn, downBtn, thanksLabel, msg);
+      });
+
+      downBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        submitFeedbackClick('down', upBtn, downBtn, thanksLabel, msg);
+      });
+
+      feedbackRow.appendChild(upBtn);
+      feedbackRow.appendChild(downBtn);
+      feedbackRow.appendChild(thanksLabel);
+      el.appendChild(feedbackRow);
     }
 
     container.appendChild(el);
+  }
+
+  function submitFeedbackClick(rating, upBtn, downBtn, thanksLabel, msg) {
+    if (msg.feedbackRating) return; // Already rated
+
+    // Immediately mark visual selection and persist in history
+    if (rating === 'up') {
+      upBtn.classList.add('sm-feedback-selected');
+      downBtn.classList.remove('sm-feedback-selected');
+    } else {
+      downBtn.classList.add('sm-feedback-selected');
+      upBtn.classList.remove('sm-feedback-selected');
+    }
+    upBtn.disabled = true;
+    downBtn.disabled = true;
+    thanksLabel.style.display = 'inline';
+
+    msg.feedbackRating = rating;
+    saveHistory();
+
+    var feedbackUrl = (apiBaseUrl || '') + '/api/widget/feedback';
+    var sessionToken = getSessionToken();
+
+    fetch(feedbackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: embedToken,
+        message_id: msg.message_id || msg.id,
+        rating: rating,
+        session_token: sessionToken,
+      }),
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Feedback request failed with status ' + res.status);
+        return res.json();
+      })
+      .then(function () {
+        // Feedback recorded successfully
+      })
+      .catch(function (err) {
+        // Log notice without reverting user's chosen UI selection
+        console.warn('[SiteMind Widget] Feedback notice:', err.message);
+      });
   }
 
   function attachEventListeners() {
@@ -1091,12 +1284,16 @@
           } catch (_) {}
         }
 
+        var msgId = (data && (data.message_id || data.messageId)) || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8));
         var botMsg = {
           sender: 'bot',
+          id: msgId,
+          message_id: msgId,
           text: (data && data.response) || 'No response generated.',
           verified: (data && data.verified) || false,
           sources: (data && data.sources) || [],
           nav_links: (data && data.nav_links) || [],
+          feedbackRating: null,
         };
 
         messages.push(botMsg);
@@ -1314,7 +1511,7 @@
           : source.dom_selector;
         if (parsed && parsed.snippet) {
           var s = cleanText(parsed.snippet);
-          if (s.length >= 8) phrases.push(s);
+          if (s.length >= 3) phrases.push(s);
         }
       } catch (_) {}
     }
@@ -1332,25 +1529,43 @@
       var rawSentences = String(source.text_snippet).split(/[.?!;\n]+/);
       for (var i = 0; i < rawSentences.length; i++) {
         var sentence = cleanText(rawSentences[i]);
-        if (sentence.length >= 15 && sentence.length <= 120) {
+        if (sentence.length >= 10 && sentence.length <= 120) {
           phrases.push(sentence);
         }
       }
 
-      // 4. Extract 5-to-8 word n-gram chunks
+      // 4. Extract 4-to-7 word n-gram chunks
       var words = fullSnippet.split(' ');
-      if (words.length >= 5) {
-        for (var w = 0; w < Math.min(words.length - 4, 4); w += 2) {
-          var chunk = words.slice(w, w + 6).join(' ').replace(/[.,:;!?]+$/, '').trim();
-          if (chunk.length >= 15) phrases.push(chunk);
+      if (words.length >= 4) {
+        for (var w = 0; w < Math.min(words.length - 3, 5); w += 2) {
+          var chunk = words.slice(w, w + 5).join(' ').replace(/[.,:;!?]+$/, '').trim();
+          if (chunk.length >= 10) phrases.push(chunk);
         }
       }
     }
 
-    // 5. Page title fallback
-    if (source.page_title) {
-      var t = cleanText(source.page_title.split(' - ')[0].split(' | ')[0]);
-      if (t.length >= 8) phrases.push(t);
+    // 5. Source label fallback (e.g. from nav_links: "About", "Services")
+    if (source.label || source.page_title) {
+      var rawLabel = source.label || source.page_title;
+      var cleanLabel = cleanText(rawLabel.split(' - ')[0].split(' | ')[0].split('⚡')[0]);
+      if (cleanLabel.length >= 3) {
+        phrases.push(cleanLabel);
+        if (cleanLabel === 'about') phrases.push('about us');
+        if (cleanLabel === 'services') phrases.push('our services');
+      }
+    }
+
+    // 6. Page URL slug fallback
+    if (source.page_url) {
+      try {
+        var pPath = new URL(source.page_url, window.location.origin).pathname;
+        var pSlug = pPath.replace(/[/_-]/g, ' ').trim();
+        if (pSlug.length >= 3) {
+          phrases.push(cleanText(pSlug));
+          if (pSlug === 'about') phrases.push('about us');
+          if (pSlug === 'services') phrases.push('our services');
+        }
+      } catch (_) {}
     }
 
     // Deduplicate and sort by length descending (longest / most specific first)
@@ -1358,7 +1573,7 @@
     var unique = [];
     for (var p = 0; p < phrases.length; p++) {
       var item = phrases[p].replace(/[.,:;!?]+$/, '').trim();
-      if (item && !seen[item] && item.length >= 8) {
+      if (item && !seen[item] && item.length >= 3) {
         seen[item] = true;
         unique.push(item);
       }
@@ -1372,7 +1587,6 @@
     return phrases.length > 0 ? phrases[0] : null;
   }
 
-  // BUG 1: Must navigate AND highlight across same-page, same-domain, and external
   function handleSourceHighlightClick(source) {
     if (!source || !source.page_url) return;
     var pageUrl = String(source.page_url).trim();
@@ -1383,9 +1597,12 @@
       return;
     }
 
-    // 2. Same domain: navigate and append hash for cross-page highlighting
+    // 2. Same domain: navigate and pass pending highlight via sessionStorage & hash
     if (isSameDomain(pageUrl)) {
-      var snippet = extractSnippet(source);
+      var snippet = extractSnippet(source) || source.page_title || '';
+      try {
+        sessionStorage.setItem('sitemind_pending_highlight', JSON.stringify(source));
+      } catch (_) {}
       var targetUrl = pageUrl;
       if (snippet) {
         var sep = targetUrl.indexOf('#') > -1 ? '&' : '#';
@@ -1399,90 +1616,164 @@
     window.open(pageUrl, '_blank', 'noopener,noreferrer');
   }
 
-  // BUG 1: Check for #sitemind-highlight= on page load
   function checkUrlHighlightHash() {
     try {
+      var sourceToHighlight = null;
+      var stored = null;
+      try {
+        stored = sessionStorage.getItem('sitemind_pending_highlight');
+      } catch (_) {}
+
+      if (stored) {
+        try {
+          sourceToHighlight = JSON.parse(stored);
+        } catch (_) {}
+      }
+
       var hash = window.location.hash || '';
       var match = hash.match(/[#&]sitemind-highlight=([^&]+)/);
       if (match && match[1]) {
         var rawSnippet = decodeURIComponent(match[1]);
-        // Clean hash from URL without reloading page
+        if (!sourceToHighlight) {
+          sourceToHighlight = { text_snippet: rawSnippet };
+        }
         var cleanUrl = window.location.pathname + window.location.search;
         if (window.history && window.history.replaceState) {
           window.history.replaceState(null, '', cleanUrl);
         }
-        setTimeout(function () {
-          attemptVisualPointing({ text_snippet: rawSnippet }, true);
-        }, 1200);
+      }
+
+      if (sourceToHighlight) {
+        var attempts = 0;
+        var maxAttempts = 10;
+        var timer = setInterval(function () {
+          attempts++;
+          var ok = attemptVisualPointing(sourceToHighlight, true);
+          if (ok || attempts >= maxAttempts) {
+            clearInterval(timer);
+            try {
+              sessionStorage.removeItem('sitemind_pending_highlight');
+            } catch (_) {}
+          }
+        }, 350);
       }
     } catch (_) {}
   }
 
   function attemptVisualPointing(source, isManual) {
     try {
-      if (!source) return;
+      if (!source) return false;
 
       var candidatePhrases = extractCandidatePhrases(source);
-      if (candidatePhrases.length === 0) {
-        logDevOnly('visual-point-failed: no search phrases found');
-        return;
+      var pagePath = '';
+      if (source.page_url) {
+        try {
+          pagePath = new URL(source.page_url, window.location.origin).pathname.replace(/\/+$/, '').toLowerCase();
+        } catch (_) {}
       }
-
-      // Query all visible, text-containing elements on the page
-      var candidates = document.querySelectorAll(
-        'p, li, h1, h2, h3, h4, h5, h6, span, td, th, blockquote, div, a, article, section, header, footer, b, strong, em, label, dt, dd'
-      );
 
       var matchedEl = null;
       var shortestLen = Infinity;
 
-      // Strategy 1: Contiguous phrase matching (longest phrase to shortest)
-      for (var p = 0; p < candidatePhrases.length; p++) {
-        var phrase = candidatePhrases[p];
-        if (phrase.length < 8) continue;
-
-        for (var i = 0; i < candidates.length; i++) {
-          var el = candidates[i];
-          if (containerEl && containerEl.contains(el)) continue;
-          if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'SVG') continue;
-
-          var elText = cleanText(el.innerText || el.textContent || '');
-          if (!elText) continue;
-
-          if (elText.includes(phrase)) {
-            // Prefer the most specific (innermost) element that contains the phrase
-            if (elText.length < shortestLen) {
-              matchedEl = el;
-              shortestLen = elText.length;
-            }
+      // Tier 1: Look for exact navigation links or buttons on current page (e.g. navbar links to About/Services)
+      if (pagePath && pagePath !== '/' && pagePath !== '') {
+        var allLinks = document.querySelectorAll('a, button, nav *');
+        for (var l = 0; l < allLinks.length; l++) {
+          var link = allLinks[l];
+          if (containerEl && containerEl.contains(link)) continue;
+          var href = (link.getAttribute('href') || link.getAttribute('to') || '').toLowerCase();
+          var linkText = cleanText(link.innerText || link.textContent || '');
+          if (href === pagePath || href.endsWith(pagePath) || (linkText && candidatePhrases.some(function (p) { return p.length >= 3 && linkText.includes(p); }))) {
+            matchedEl = link;
+            break;
           }
-        }
-
-        // If we found a specific matched element for this phrase, proceed
-        if (matchedEl && shortestLen < 600) {
-          break;
         }
       }
 
-      // Strategy 2: Distinctive keyword density fallback if DOM tags split the sentence
+      // Tier 2: Search semantic leaf content elements for contiguous phrase matches
+      if (!matchedEl) {
+        var semanticLeaves = document.querySelectorAll(
+          'h1, h2, h3, h4, h5, h6, p, li, a, button, blockquote, dt, dd, td, th'
+        );
+
+        for (var p = 0; p < candidatePhrases.length; p++) {
+          var phrase = candidatePhrases[p];
+          if (phrase.length < 3) continue;
+
+          for (var i = 0; i < semanticLeaves.length; i++) {
+            var el = semanticLeaves[i];
+            if (containerEl && containerEl.contains(el)) continue;
+            var elText = cleanText(el.innerText || el.textContent || '');
+            if (!elText) continue;
+
+            if (elText.includes(phrase)) {
+              if (elText.length < shortestLen) {
+                matchedEl = el;
+                shortestLen = elText.length;
+              }
+            }
+          }
+
+          if (matchedEl && shortestLen < 500) {
+            break;
+          }
+        }
+      }
+
+      // Tier 3: Search general elements if semantic leaves yielded nothing
+      if (!matchedEl) {
+        var generalElements = document.querySelectorAll('span, b, strong, em, div, section, article');
+        for (var gp = 0; gp < candidatePhrases.length; gp++) {
+          var gPhrase = candidatePhrases[gp];
+          if (gPhrase.length < 3) continue;
+
+          for (var gi = 0; gi < generalElements.length; gi++) {
+            var gel = generalElements[gi];
+            if (containerEl && containerEl.contains(gel)) continue;
+            if (gel.tagName === 'SCRIPT' || gel.tagName === 'STYLE' || gel.tagName === 'SVG') continue;
+            var gText = cleanText(gel.innerText || gel.textContent || '');
+            if (!gText || gText.length > 500) continue;
+
+            if (gText.includes(gPhrase)) {
+              if (gText.length < shortestLen) {
+                matchedEl = gel;
+                shortestLen = gText.length;
+              }
+            }
+          }
+          if (matchedEl && shortestLen < 400) break;
+        }
+      }
+
+      // Tier 4: Multi-keyword density fallback
       if (!matchedEl && candidatePhrases.length > 0) {
-        var baseWords = candidatePhrases[0].split(' ').filter(function (w) { return w.length >= 4; });
-        if (baseWords.length >= 3) {
-          var bestScore = 0;
-          for (var j = 0; j < candidates.length; j++) {
-            var cel = candidates[j];
+        var stopWords = { the: 1, and: 1, with: 1, that: 1, this: 1, from: 1, for: 1, our: 1, you: 1, page: 1, site: 1, more: 1, your: 1 };
+        var allWords = [];
+        for (var cp = 0; cp < candidatePhrases.length; cp++) {
+          var wArr = candidatePhrases[cp].split(' ').filter(function (w) { return w.length >= 3 && !stopWords[w]; });
+          for (var wa = 0; wa < wArr.length; wa++) {
+            if (!allWords.includes(wArr[wa])) allWords.push(wArr[wa]);
+          }
+        }
+
+        if (allWords.length >= 1) {
+          var allCandidates = document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, a, button, span, div');
+          var bestScore = -999;
+          for (var j = 0; j < allCandidates.length; j++) {
+            var cel = allCandidates[j];
             if (containerEl && containerEl.contains(cel)) continue;
             if (cel.tagName === 'SCRIPT' || cel.tagName === 'STYLE' || cel.tagName === 'SVG') continue;
 
             var cText = cleanText(cel.innerText || cel.textContent || '');
-            if (!cText || cText.length > 800) continue;
+            if (!cText || cText.length > 400) continue;
 
             var score = 0;
-            for (var b = 0; b < baseWords.length; b++) {
-              if (cText.includes(baseWords[b])) score++;
+            for (var b = 0; b < allWords.length; b++) {
+              if (cText.includes(allWords[b])) score += 10;
             }
+            score -= Math.floor(cText.length / 30);
 
-            if (score >= Math.min(3, baseWords.length) && score > bestScore) {
+            if (score > bestScore && score >= 10) {
               bestScore = score;
               matchedEl = cel;
             }
@@ -1491,91 +1782,139 @@
       }
 
       if (!matchedEl) {
-        logDevOnly('visual-point-failed: element not found on page for phrases: ' + candidatePhrases.slice(0, 3).join(' | '));
-        return;
+        logDevOnly('visual-point-failed: element not found on page');
+        return false;
       }
 
-      // If matched element is an inline wrapper, locate parent paragraph/item for better visibility
+      // Elevate small inline tags to readable block parent if appropriate
       var targetEl = matchedEl;
       if (targetEl.tagName === 'SPAN' || targetEl.tagName === 'B' || targetEl.tagName === 'STRONG' || targetEl.tagName === 'EM') {
-        var parentBlock = targetEl.closest('p, li, h1, h2, h3, h4, h5, h6, div, article');
-        if (parentBlock && parentBlock.innerText && cleanText(parentBlock.innerText).length < 500) {
+        var parentBlock = targetEl.closest('p, li, h1, h2, h3, h4, h5, h6, a, div');
+        if (parentBlock && parentBlock.innerText && cleanText(parentBlock.innerText).length < 350) {
           targetEl = parentBlock;
         }
       }
 
-      var origOutline = targetEl.style.outline;
-      var origOutlineOffset = targetEl.style.outlineOffset;
-      var origBg = targetEl.style.backgroundColor;
-      var origBoxShadow = targetEl.style.boxShadow;
-      var origTransition = targetEl.style.transition;
-      var origBorderRadius = targetEl.style.borderRadius;
-
+      // 1. Inject or update style definition
       var styleId = 'sitemind-highlight-style';
       var existingStyle = document.getElementById(styleId);
       if (!existingStyle) {
         var styleEl = document.createElement('style');
         styleEl.id = styleId;
         styleEl.textContent = `
+          @keyframes sitemindBeaconBounce {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-7px); }
+          }
           @keyframes sitemindGlow {
             0% {
-              outline-color: #2563eb;
-              background-color: rgba(254, 240, 138, 0.85);
-              box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8);
+              box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.4), 0 0 25px rgba(245, 158, 11, 0.85);
             }
             50% {
-              outline-color: #f59e0b;
-              background-color: rgba(254, 240, 138, 0.55);
-              box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 0 12px rgba(245, 158, 11, 0.5);
+              box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 0 15px rgba(245, 158, 11, 0.5);
             }
             100% {
-              outline-color: #2563eb;
-              background-color: rgba(254, 240, 138, 0.85);
-              box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8);
+              box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.4), 0 0 25px rgba(245, 158, 11, 0.85);
             }
           }
           .sitemind-highlight-active {
+            outline: 4px solid #2563eb !important;
+            outline-offset: 4px !important;
+            background-color: rgba(254, 240, 138, 0.75) !important;
+            border-radius: 6px !important;
+            transition: all 0.3s ease !important;
             animation: sitemindGlow 1.4s infinite ease-in-out !important;
+          }
+          #sitemind-pointer-beacon {
+            position: absolute;
+            z-index: 2147483647;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 6px 14px;
+            border-radius: 20px;
+            box-shadow: 0 4px 18px rgba(37, 99, 235, 0.45), 0 2px 6px rgba(0,0,0,0.25);
+            pointer-events: none;
+            animation: sitemindBeaconBounce 0.9s infinite alternate ease-in-out;
+            transition: opacity 0.4s ease;
+          }
+          #sitemind-pointer-beacon::after {
+            content: "";
+            position: absolute;
+            bottom: -6px;
+            left: 20px;
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid #7c3aed;
           }
         `;
         document.head.appendChild(styleEl);
       }
 
-      targetEl.style.transition = 'all 0.3s ease';
-      targetEl.style.borderRadius = '6px';
-      targetEl.style.outline = '3px solid #2563eb';
-      targetEl.style.outlineOffset = '4px';
-      targetEl.style.backgroundColor = 'rgba(254, 240, 138, 0.85)';
-      targetEl.style.boxShadow = '0 0 0 4px rgba(37, 99, 235, 0.4), 0 0 20px rgba(245, 158, 11, 0.8)';
-      targetEl.classList.add('sitemind-highlight-active');
+      // 2. Position floating beacon badge directly above target element
+      var beacon = document.getElementById('sitemind-pointer-beacon');
+      if (!beacon) {
+        beacon = document.createElement('div');
+        beacon.id = 'sitemind-pointer-beacon';
+        beacon.innerHTML = '<span>📍 AI Assistant Pointed Here</span>';
+        document.body.appendChild(beacon);
+      }
 
+      var rect = targetEl.getBoundingClientRect();
+      var scrollX = window.pageXOffset || document.documentElement.scrollLeft || 0;
+      var scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var topPos = rect.top + scrollY - 38;
+      if (topPos < 10) topPos = rect.bottom + scrollY + 10;
+      var leftPos = Math.max(10, rect.left + scrollX);
+
+      beacon.style.top = topPos + 'px';
+      beacon.style.left = leftPos + 'px';
+      beacon.style.opacity = '1';
+      beacon.style.display = 'inline-flex';
+
+      // 3. Highlight target element
+      targetEl.classList.add('sitemind-highlight-active');
       targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+      // 4. Clean up after 5 seconds
       setTimeout(function () {
         try {
           targetEl.classList.remove('sitemind-highlight-active');
-          targetEl.style.outline = origOutline;
-          targetEl.style.outlineOffset = origOutlineOffset;
-          targetEl.style.backgroundColor = origBg;
-          targetEl.style.boxShadow = origBoxShadow;
-          targetEl.style.borderRadius = origBorderRadius;
-          setTimeout(function () {
-            try {
-              targetEl.style.transition = origTransition;
-            } catch (_) { }
-          }, 350);
-        } catch (_) { }
-      }, 4500);
+          if (beacon) {
+            beacon.style.opacity = '0';
+            setTimeout(function () {
+              if (beacon && beacon.parentNode) {
+                beacon.parentNode.removeChild(beacon);
+              }
+            }, 400);
+          }
+        } catch (_) {}
+      }, 5000);
 
+      return true;
     } catch (err) {
-      // Silently abort visual pointing on any error
+      logDevOnly('visual-point-failed: ' + err.message);
+      return false;
     }
   }
 
-  // Kick off config fetch on load
+  // Kick off config fetch and hash highlight listener on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     fetchConfig();
+    checkUrlHighlightHash();
   } else {
-    window.addEventListener('DOMContentLoaded', fetchConfig);
+    window.addEventListener('DOMContentLoaded', function () {
+      fetchConfig();
+      checkUrlHighlightHash();
+    });
   }
+  window.addEventListener('hashchange', checkUrlHighlightHash);
+  window.addEventListener('popstate', checkUrlHighlightHash);
 })();

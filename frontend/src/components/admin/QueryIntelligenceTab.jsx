@@ -18,7 +18,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Hash,
-  Tag
+  Tag,
+  Zap,
+  TrendingDown,
+  BarChart3,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import SkeletonBlock from '../ui/SkeletonBlock';
 
@@ -56,7 +61,10 @@ const QueryIntelligenceTab = ({ data, loading }) => {
     top_websites_by_fallback = [],
     verdict_distribution = [],
     topics_cloud = [],
-    recent_queries = []
+    recent_queries = [],
+    retrieval_adaptation_breakdown = { expanded: 0, tightened: 0, standard: 0, total: 0, expanded_pct: 0, tightened_pct: 0, standard_pct: 100 },
+    weight_distribution = { penalized: 0, neutral: 0, rewarded: 0, total: 0, avg_weight: 1.0 },
+    reinforcement_impact = { experienced_fallback_rate: 0, unreinforced_fallback_rate: 0, fallback_delta: 0, improvement_pct: 0, sites_evaluated: 0 },
   } = data || {};
 
   // Pie chart formatted data
@@ -110,6 +118,105 @@ const QueryIntelligenceTab = ({ data, loading }) => {
 
   return (
     <div className="space-y-6 font-sans">
+      {/* Module 9: Feedback Reinforcement & Adaptation Platform Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Reinforcement Impact */}
+        <div className="bg-[#131318] border border-[#27272A] p-4 rounded-[16px] flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5 uppercase tracking-wider">
+              <TrendingDown className="w-3.5 h-3.5 text-emerald-400" />
+              Reinforcement Impact
+            </span>
+            {reinforcement_impact.improvement_pct > 0 && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                -{reinforcement_impact.improvement_pct}% Fallback
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-400 mb-3">
+            Fallback rate on sites with active feedback (≥50 signals) vs unreinforced sites.
+          </p>
+          <div className="pt-2 border-t border-[#27272A]/60 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-zinc-500 text-[10px] block">≥50 Signals</span>
+              <span className="font-bold text-emerald-400 font-mono text-sm">
+                {reinforcement_impact.experienced_fallback_rate}%
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-zinc-500 text-[10px] block">0 Signals</span>
+              <span className="font-semibold text-zinc-400 font-mono text-sm">
+                {reinforcement_impact.unreinforced_fallback_rate}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Weight Distribution */}
+        <div className="bg-[#131318] border border-[#27272A] p-4 rounded-[16px] flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5 uppercase tracking-wider">
+              <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+              Weight Distribution
+            </span>
+            <span className="text-[10px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-[#181820] border border-[#27272A]">
+              Avg: {weight_distribution.avg_weight}
+            </span>
+          </div>
+          <div className="space-y-1.5 text-[11px] pt-1">
+            <div className="flex justify-between items-center text-zinc-300">
+              <span className="flex items-center gap-1 text-emerald-400">
+                <ThumbsUp className="w-2.5 h-2.5" /> Rewarded (&gt;1.1)
+              </span>
+              <span className="font-mono text-white">{weight_distribution.rewarded}</span>
+            </div>
+            <div className="flex justify-between items-center text-zinc-300">
+              <span className="text-zinc-400">Neutral (0.9 - 1.1)</span>
+              <span className="font-mono text-white">{weight_distribution.neutral}</span>
+            </div>
+            <div className="flex justify-between items-center text-zinc-300">
+              <span className="flex items-center gap-1 text-rose-400">
+                <ThumbsDown className="w-2.5 h-2.5" /> Penalized (&lt;0.9)
+              </span>
+              <span className="font-mono text-white">{weight_distribution.penalized}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Retrieval Adaptation Breakdown */}
+        <div className="bg-[#131318] border border-[#27272A] p-4 rounded-[16px] flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5 uppercase tracking-wider">
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              Retrieval Adaptation
+            </span>
+            <span className="text-[10px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-[#181820] border border-[#27272A]">
+              {retrieval_adaptation_breakdown.total} queries
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+            <div className="p-2 rounded-[8px] bg-amber-500/10 border border-amber-500/20">
+              <span className="block text-[10px] text-amber-300">Expanded</span>
+              <span className="font-bold text-amber-400 font-mono text-xs">
+                {retrieval_adaptation_breakdown.expanded_pct}%
+              </span>
+            </div>
+            <div className="p-2 rounded-[8px] bg-emerald-500/10 border border-emerald-500/20">
+              <span className="block text-[10px] text-emerald-300">Tightened</span>
+              <span className="font-bold text-emerald-400 font-mono text-xs">
+                {retrieval_adaptation_breakdown.tightened_pct}%
+              </span>
+            </div>
+            <div className="p-2 rounded-[8px] bg-[#181820] border border-[#27272A]">
+              <span className="block text-[10px] text-zinc-400">Standard</span>
+              <span className="font-bold text-zinc-300 font-mono text-xs">
+                {retrieval_adaptation_breakdown.standard_pct}%
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Top Section: Top Clustered Questions & Entailment Verdicts Pie */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Top 20 Most Asked Clustered Questions */}
@@ -350,6 +457,7 @@ const QueryIntelligenceTab = ({ data, loading }) => {
                 <th className="py-3 px-4 font-medium">Query Text</th>
                 <th className="py-3 px-4 font-medium">Website Domain</th>
                 <th className="py-3 px-4 font-medium">NLI Verdict</th>
+                <th className="py-3 px-4 font-medium">Adaptation</th>
                 <th className="py-3 px-4 font-medium">Latency</th>
                 <th className="py-3 px-4 font-medium">Timestamp</th>
                 <th className="py-3 px-4 font-medium">Fallback Reason</th>
@@ -358,7 +466,7 @@ const QueryIntelligenceTab = ({ data, loading }) => {
             <tbody className="divide-y divide-[#27272A]/60">
               {paginatedQueries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-zinc-500">
+                  <td colSpan={7} className="py-10 text-center text-zinc-500">
                     No recent queries found matching your search.
                   </td>
                 </tr>
@@ -380,6 +488,17 @@ const QueryIntelligenceTab = ({ data, loading }) => {
                           : 'bg-rose-500/15 text-rose-400'
                       }`}>
                         {q.verdict}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-medium capitalize ${
+                        q.retrieval_adaptation === 'expanded'
+                          ? 'bg-amber-500/15 text-amber-400'
+                          : q.retrieval_adaptation === 'tightened'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}>
+                        {q.retrieval_adaptation || 'standard'}
                       </span>
                     </td>
                     <td className="py-3 px-4 font-medium tabular-nums text-zinc-300">

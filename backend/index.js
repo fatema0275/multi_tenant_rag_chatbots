@@ -47,6 +47,25 @@ app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/api/chat', chatRoutes);
 
+// Internal Weight Decay Proxy endpoint
+app.post('/api/internal/decay-weights', async (req, res) => {
+  try {
+    const internalSecret = req.headers['internal_secret'] || req.headers['x-internal-secret'] || '';
+    const response = await fetch(`${BRIDGE_URL}/api/internal/decay-weights`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'INTERNAL_SECRET': internalSecret,
+      },
+      body: JSON.stringify(req.body || {}),
+    });
+    const data = await response.json();
+    return res.status(response.status).json(data);
+  } catch (err) {
+    return res.status(502).json({ error: `Internal decay service unreachable: ${err.message}` });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', service: 'sitemind-backend', timestamp: new Date() });

@@ -25,6 +25,10 @@ import {
   ChevronUp,
   FileText,
   Zap,
+  ThumbsUp,
+  ThumbsDown,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 
 const Analytics = () => {
@@ -104,6 +108,29 @@ const Analytics = () => {
   };
 
   const rawLogs = analyticsData?.logs || [];
+  const weightDistribution = analyticsData?.weightDistribution || {
+    penalized: 0,
+    neutral: 0,
+    rewarded: 0,
+    total: 0,
+    avgWeight: 1.0,
+  };
+  const adaptationBreakdown = analyticsData?.adaptationBreakdown || {
+    expanded: 0,
+    tightened: 0,
+    standard: 0,
+    total: 0,
+    expandedPct: 0,
+    tightenedPct: 0,
+    standardPct: 100,
+  };
+  const reinforcementImpact = analyticsData?.reinforcementImpact || {
+    experiencedFallbackRate: 0,
+    unreinforcedFallbackRate: 0,
+    fallbackDelta: 0,
+    improvementPct: 0,
+    sitesEvaluated: 0,
+  };
 
   // Filtered logs based on search and verdict filter
   const filteredLogs = useMemo(() => {
@@ -456,6 +483,218 @@ const Analytics = () => {
         </div>
       </section>
 
+      {/* ── Feedback Reinforcement & Adaptive Retrieval (Module 9) ── */}
+      <section className="rounded-[20px] bg-[#131318] border border-zinc-800/90 p-6 sm:p-7 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/70 pb-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-emerald-400" />
+              <h2 className="font-heading font-bold text-lg text-white">
+                Feedback Reinforcement & Adaptive Retrieval
+              </h2>
+            </div>
+            <p className="text-xs sm:text-sm text-zinc-400">
+              Autonomous reinforcement loop adjusting chunk ranking weights and dynamic retrieval thresholds based on visitor feedback.
+            </p>
+          </div>
+
+          <span className="self-start sm:self-auto text-xs font-mono px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" />
+            (1 - distance) × weight Ranking
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Reinforcement Impact (Before / After Comparison) */}
+          <div className="rounded-[16px] bg-[#0E0E12] border border-zinc-800/80 p-5 space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  <TrendingDown className="w-4 h-4 text-emerald-400" />
+                  <span>Reinforcement Impact</span>
+                </div>
+                {reinforcementImpact.improvementPct > 0 && (
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                    -{reinforcementImpact.improvementPct}% Fallback
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                Fallback rate comparison for sites with active reinforcement signals (≥50 feedback ratings) vs unreinforced sites.
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  Sites with ≥50 Signals:
+                </span>
+                <span className="font-mono text-emerald-400 font-bold text-sm">
+                  {reinforcementImpact.experiencedFallbackRate}%
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                  Unreinforced Sites (0 Signals):
+                </span>
+                <span className="font-mono text-zinc-400 font-semibold text-sm">
+                  {reinforcementImpact.unreinforcedFallbackRate}%
+                </span>
+              </div>
+
+              <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden flex">
+                <div
+                  className="bg-emerald-500 h-full transition-all duration-500"
+                  style={{ width: `${Math.max(10, 100 - reinforcementImpact.experiencedFallbackRate)}%` }}
+                  title="Grounded Rate with Feedback"
+                />
+              </div>
+
+              <div className="text-[10px] text-zinc-500 pt-1 flex items-center justify-between">
+                <span>Evaluated: {reinforcementImpact.sitesEvaluated || 1} tenant sites</span>
+                <span className="text-emerald-400 font-medium">Continuous Quality Gain</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Chunk Weight Distribution Histogram */}
+          <div className="rounded-[16px] bg-[#0E0E12] border border-zinc-800/80 p-5 space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  <BarChart3 className="w-4 h-4 text-indigo-400" />
+                  <span>Weight Distribution</span>
+                </div>
+                <span className="text-[11px] font-mono text-zinc-300 px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700/60">
+                  Avg: {weightDistribution.avgWeight}
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                Histogram of chunk reinforcement weights [0.1 .. 3.0] across all indexed passages for this site.
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+              {/* Rewarded */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-300 flex items-center gap-1.5">
+                    <ThumbsUp className="w-3 h-3 text-emerald-400" />
+                    Rewarded (&gt;1.10)
+                  </span>
+                  <span className="font-mono text-emerald-400 font-semibold">
+                    {weightDistribution.rewarded} chunks ({weightDistribution.total > 0 ? ((weightDistribution.rewarded / weightDistribution.total) * 100).toFixed(1) : 0}%)
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${weightDistribution.total > 0 ? (weightDistribution.rewarded / weightDistribution.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Neutral */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-400 flex items-center gap-1.5">
+                    <span className="w-3 h-0.5 bg-zinc-400 inline-block" />
+                    Neutral (0.90 - 1.10)
+                  </span>
+                  <span className="font-mono text-zinc-300 font-semibold">
+                    {weightDistribution.neutral} chunks ({weightDistribution.total > 0 ? ((weightDistribution.neutral / weightDistribution.total) * 100).toFixed(1) : 0}%)
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="bg-zinc-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${weightDistribution.total > 0 ? (weightDistribution.neutral / weightDistribution.total) * 100 : 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Penalized */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-300 flex items-center gap-1.5">
+                    <ThumbsDown className="w-3 h-3 text-rose-400" />
+                    Penalized (&lt;0.90)
+                  </span>
+                  <span className="font-mono text-rose-400 font-semibold">
+                    {weightDistribution.penalized} chunks ({weightDistribution.total > 0 ? ((weightDistribution.penalized / weightDistribution.total) * 100).toFixed(1) : 0}%)
+                  </span>
+                </div>
+                <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="bg-rose-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${weightDistribution.total > 0 ? (weightDistribution.penalized / weightDistribution.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Adaptive Retrieval Breakdown */}
+          <div className="rounded-[16px] bg-[#0E0E12] border border-zinc-800/80 p-5 space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  <span>Retrieval Adaptation</span>
+                </div>
+                <span className="text-[11px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700/60">
+                  {adaptationBreakdown.total} queries
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400">
+                Dynamically adapted retrieval scope based on cosine similarity to historical feedback clusters (&lt;0.15 dist).
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-zinc-800/60 text-xs">
+              <div className="p-2 rounded-[10px] bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-amber-300 flex items-center gap-1">
+                    <span>Expanded Scope</span>
+                    <span className="text-[10px] text-amber-400/80">(Top-K 8, -0.05 cut)</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400">Repeated negative history</div>
+                </div>
+                <span className="font-mono font-bold text-amber-400 text-sm">
+                  {adaptationBreakdown.expandedPct}%
+                </span>
+              </div>
+
+              <div className="p-2 rounded-[10px] bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-emerald-300 flex items-center gap-1">
+                    <span>Tightened Scope</span>
+                    <span className="text-[10px] text-emerald-400/80">(Top-K 5, +0.05 cut)</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400">Repeated positive history</div>
+                </div>
+                <span className="font-mono font-bold text-emerald-400 text-sm">
+                  {adaptationBreakdown.tightenedPct}%
+                </span>
+              </div>
+
+              <div className="p-2 rounded-[10px] bg-zinc-800/40 border border-zinc-800 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-zinc-300">Standard Retrieval</div>
+                  <div className="text-[10px] text-zinc-500">Normal similarity search</div>
+                </div>
+                <span className="font-mono text-zinc-400 font-semibold text-sm">
+                  {adaptationBreakdown.standardPct}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Query & Audit Interaction Logs ─────────────────────── */}
       <section className="rounded-[20px] bg-[#131318] border border-zinc-800/90 p-6 sm:p-7 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -621,6 +860,19 @@ const Analytics = () => {
                       </span>
                     )}
 
+                    {log.retrieval_adaptation && (
+                      <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                        log.retrieval_adaptation === 'expanded'
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                          : log.retrieval_adaptation === 'tightened'
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                          : 'bg-zinc-800 text-zinc-300 border-zinc-700/60'
+                      }`}>
+                        <Zap className="w-3 h-3" />
+                        Adaptation: {log.retrieval_adaptation}
+                      </span>
+                    )}
+
                     <span>
                       {log.created_at ? new Date(log.created_at).toLocaleString() : ''}
                     </span>
@@ -640,6 +892,15 @@ const Analytics = () => {
                         <div>
                           <span className="text-zinc-500">Fallback Reason: </span>
                           <span className="text-zinc-300">{log.fallback_reason || 'None (Grounded Answer)'}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">Retrieval Adaptation: </span>
+                          <span className={`font-semibold capitalize ${
+                            log.retrieval_adaptation === 'expanded' ? 'text-amber-400' :
+                            log.retrieval_adaptation === 'tightened' ? 'text-emerald-400' : 'text-zinc-300'
+                          }`}>
+                            {log.retrieval_adaptation || 'None (Standard)'}
+                          </span>
                         </div>
                         <div className="sm:col-span-2">
                           <span className="text-zinc-500">Retrieved Chunk IDs: </span>

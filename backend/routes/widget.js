@@ -86,4 +86,26 @@ router.post('/query', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/widget/feedback
+ * Public proxy to Python bridge
+ */
+router.post('/feedback', async (req, res) => {
+  try {
+    const response = await fetch(`${BRIDGE_URL}/api/widget/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': req.ip || req.connection.remoteAddress,
+      },
+      body: JSON.stringify(req.body),
+    });
+    const data = await safeParseResponse(response);
+    return res.status(response.status).json(data);
+  } catch (err) {
+    console.error('[widgetRoute] Error forwarding POST /widget/feedback:', err.message);
+    return res.status(502).json({ error: `Python bridge unreachable: ${err.message}` });
+  }
+});
+
 module.exports = router;

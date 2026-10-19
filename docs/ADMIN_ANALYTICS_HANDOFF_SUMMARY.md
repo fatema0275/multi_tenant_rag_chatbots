@@ -246,3 +246,4 @@ vite v5.4.21 building for production...
 dist/assets/AdminDashboard-B9UISrmZ.js      511.73 kB │ gzip: 130.38 kB
 ✓ built in 1m 15s
 ```
+
