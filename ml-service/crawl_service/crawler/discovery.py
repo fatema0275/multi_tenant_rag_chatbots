@@ -10,6 +10,11 @@ Strategy (tried in order):
 
 All discovered URLs are normalised (scheme + netloc + path + query),
 deduplicated, and capped at cfg.MAX_PAGES.
+
+Same-domain enforcement: ALL external-domain URLs are silently rejected at
+discovery time. Google Drive, social media, CDN, and any other off-domain
+links are never queued. Each rejected URL emits a 'skipped-external-domain'
+crawl log entry so site owners can audit what was filtered.
 """
 
 import logging
@@ -147,10 +152,31 @@ def _bfs_discover(
     Multithreaded level-by-level BFS link traversal starting at base_url.
 
     Respects cfg.MAX_DEPTH and cfg.MAX_PAGES.
-    Follows only same-domain links.
+    Follows only same-domain links — ALL external URLs (including Google Drive,
+    social media, CDN, analytics, docs.google.com, etc.) are rejected at
+    discovery time with a 'skipped-external-domain' log entry.
     Checks robots.txt before adding a URL to queue.
     """
     from crawl_service.db.crawl_jobs import increment_job_counter
+
+    # Lazily import log_page_outcome to avoid circular imports
+    _log_skip = None
+    if job_id is not None:
+        try:
+            from crawl_service.db.crawl_logs import log_page_outcome as _lpo
+            _log_skip = _lpo
+        except Exception:
+            pass
+
+    def _emit_skip(skipped_url: str) -> None:
+        """Emit a skipped-external-domain log entry (best-effort, never raises)."""
+        if _log_skip is not None:
+            try:
+                _log_skip(job_id, skipped_url, "skipped-external-domain",
+                          f"External domain rejected during BFS discovery (registered domain: {domain})")
+            except Exception:
+                pass
+        logger.debug("skipped-external-domain: %s (registered domain: %s)", skipped_url, domain)
 
     visited: set[str] = set()
     found: list[str] = []
@@ -163,9 +189,10 @@ def _bfs_discover(
     depth = 0
 
     while current_level and len(found) < cfg.MAX_PAGES and depth <= cfg.MAX_DEPTH:
+        # Only queue same-domain URLs that pass robots.txt
         candidates = [
             u for u in current_level
-            if u not in visited and (_is_drive_url(u) or is_allowed(u, domain, scheme))
+            if u not in visited and is_allowed(u, domain, scheme)
         ]
 
         for u in candidates:
@@ -177,14 +204,11 @@ def _bfs_discover(
         next_level: set[str] = set()
 
         def _fetch_url(u: str):
-            if _is_drive_url(u):
-                # Google Drive link discovered on site: keep it, don't parse HTML links
-                return u, ""
             try:
                 resp = requests.get(u, headers=headers, timeout=5, allow_redirects=True)
                 u_path = urlparse(u).path.lower()
                 is_static_file = any(u_path.endswith(ext) for ext in [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js", ".json", ".xml"])
-                
+
                 if resp.status_code == 200:
                     ct = resp.headers.get("Content-Type", "").lower()
                     is_html = "text/html" in ct
@@ -241,8 +265,13 @@ def _bfs_discover(
                                 abs_url = urljoin(u, href)
                                 norm_child = _normalise(abs_url)
                                 if norm_child and norm_child not in visited:
-                                    if _is_drive_url(norm_child) or _same_domain(norm_child, domain):
-                                        next_level.add(norm_child)
+                                    if _same_domain(norm_child, domain):
+                                        # Same-domain: pass robots check before queuing
+                                        if is_allowed(norm_child, domain, scheme):
+                                            next_level.add(norm_child)
+                                    else:
+                                        # External domain — log and skip
+                                        _emit_skip(norm_child)
                         except Exception:
                             pass
 
@@ -281,12 +310,9 @@ def _normalise(url: str) -> Optional[str]:
 
 
 def _is_drive_url(url: str) -> bool:
-    """True if url points to Google Drive or Google Docs."""
-    try:
-        netloc = urlparse(url).netloc.lower()
-        return "drive.google.com" in netloc or "docs.google.com" in netloc
-    except Exception:
-        return False
+    """Deprecated: always returns False. Google Drive URLs are now rejected at discovery.
+    Kept as a stub for backward compatibility with any external callers."""
+    return False
 
 
 def _same_domain(url: str, domain: str) -> bool:
@@ -299,8 +325,11 @@ def _same_domain(url: str, domain: str) -> bool:
 
 def _filter_and_dedup(urls: list[str], domain: str, scheme: str) -> list[str]:
     """
-    Filter a list of URLs to same-domain or Google Drive, robots-allowed, normalised,
+    Filter a list of URLs to same-domain only, robots-allowed, normalised,
     deduplicated entries.
+
+    External URLs (including Google Drive, social media, CDN) are silently
+    excluded. This is the sitemap-path equivalent of the BFS same-domain gate.
     """
     seen: set[str] = set()
     result: list[str] = []
@@ -308,11 +337,12 @@ def _filter_and_dedup(urls: list[str], domain: str, scheme: str) -> list[str]:
         norm = _normalise(raw)
         if not norm:
             continue
-        if not (_is_drive_url(norm) or _same_domain(norm, domain)):
+        if not _same_domain(norm, domain):
+            logger.debug("sitemap-filter skipped-external-domain: %s (registered domain: %s)", norm, domain)
             continue
         if norm in seen:
             continue
-        if not _is_drive_url(norm) and not is_allowed(norm, domain, scheme):
+        if not is_allowed(norm, domain, scheme):
             continue
         seen.add(norm)
         result.append(norm)

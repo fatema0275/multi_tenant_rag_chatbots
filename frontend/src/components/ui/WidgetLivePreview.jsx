@@ -10,6 +10,7 @@ import {
   Wifi,
   Battery,
   Lock,
+  Mic,
 } from 'lucide-react';
 
 const WidgetLivePreview = ({
@@ -352,14 +353,24 @@ const WidgetLivePreview = ({
                     className="flex items-center gap-1.5 px-3 py-2.5 border-t"
                     style={{ borderColor: inputBorder }}
                   >
-                    <input
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder={placeholderText || 'Type a message…'}
-                      style={{ color: textColor, backgroundColor: inputBg }}
-                      className="flex-1 px-3 py-1.5 rounded-full text-[11px] outline-none border border-transparent focus:border-zinc-400 transition-colors placeholder:text-zinc-400"
-                    />
+                    <div className="flex-1 relative flex items-center">
+                      <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder={placeholderText || 'Type a message…'}
+                        style={{ color: textColor, backgroundColor: inputBg }}
+                        className="w-full pl-3 pr-8 py-1.5 rounded-full text-[11px] outline-none border border-transparent focus:border-zinc-400 transition-colors placeholder:text-zinc-400"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Voice input"
+                        title="Voice input (Sarvam AI coming soon)"
+                        className="absolute right-2 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer p-0.5 rounded-full hover:bg-white/10"
+                      >
+                        <Mic className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <button
                       type="submit"
                       disabled={!input.trim() || isTyping}
@@ -501,14 +512,24 @@ const WidgetLivePreview = ({
                     className="flex items-center gap-1.5 px-2.5 py-2 border-t"
                     style={{ borderColor: inputBorder }}
                   >
-                    <input
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder={placeholderText || 'Type a message…'}
-                      style={{ color: textColor, backgroundColor: inputBg }}
-                      className="flex-1 px-2.5 py-1.5 rounded-full text-[10px] outline-none border border-transparent focus:border-zinc-400 transition-colors placeholder:text-zinc-400"
-                    />
+                    <div className="flex-1 relative flex items-center">
+                      <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder={placeholderText || 'Type a message…'}
+                        style={{ color: textColor, backgroundColor: inputBg }}
+                        className="w-full pl-2.5 pr-7 py-1.5 rounded-full text-[10px] outline-none border border-transparent focus:border-zinc-400 transition-colors placeholder:text-zinc-400"
+                      />
+                      <button
+                        type="button"
+                        aria-label="Voice input"
+                        title="Voice input (Sarvam AI coming soon)"
+                        className="absolute right-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer p-0.5 rounded-full hover:bg-white/10"
+                      >
+                        <Mic className="w-3 h-3" />
+                      </button>
+                    </div>
                     <button
                       type="submit"
                       disabled={!input.trim() || isTyping}

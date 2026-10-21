@@ -620,7 +620,7 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
 
   // 4. Query Adaptation Step (Module 9):
   // Check feedback_examples for this site_id within cosine distance 0.15 of query embedding
-  let topK = 5;
+  let topK = 8;
   let threshold = similarityThreshold || 0.30;
 
   try {
@@ -648,16 +648,16 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
 
     if (negativeMatch || recentSessionFeedback === 'down') {
       // Negative feedback adaptation: expand retrieval window and decrease threshold
-      topK = 8;
+      topK = 10;
       threshold = Math.max(0.05, threshold - 0.05);
       retrievalAdaptation = 'expanded';
-      console.log(`[Chat Query Adaptation] Expanded retrieval applied (topK=8, threshold=${threshold.toFixed(2)}) for site=${resolvedSiteId} (sessionFeedback=${recentSessionFeedback || 'none'})`);
+      console.log(`[Chat Query Adaptation] Expanded retrieval applied (topK=10, threshold=${threshold.toFixed(2)}) for site=${resolvedSiteId} (sessionFeedback=${recentSessionFeedback || 'none'})`);
     } else if (positiveMatch || recentSessionFeedback === 'up') {
       // Positive feedback adaptation: tighten retrieval
-      topK = 5;
+      topK = 6;
       threshold = threshold + 0.05;
       retrievalAdaptation = 'tightened';
-      console.log(`[Chat Query Adaptation] Tightened retrieval applied (topK=5, threshold=${threshold.toFixed(2)}) for site=${resolvedSiteId} (sessionFeedback=${recentSessionFeedback || 'none'})`);
+      console.log(`[Chat Query Adaptation] Tightened retrieval applied (topK=6, threshold=${threshold.toFixed(2)}) for site=${resolvedSiteId} (sessionFeedback=${recentSessionFeedback || 'none'})`);
     }
   } catch (adaptErr) {
     console.warn('[Chat Query Adaptation] Check failed (non-blocking):', adaptErr.message);
@@ -736,14 +736,14 @@ Response Guidelines:
 1. Tone & Structure:
    - Provide direct, clear, and well-structured answers.
    - If the visitor asks where a page, service, or feature is located (e.g. "where is services page?", "how do I find pricing?"), clearly tell them where it is located, what section or page URL it corresponds to, and summarize what services/features are offered there.
-   - When listing courses, subjects, offerings, or services, format them as clean bullet points with EACH bullet on its own new line (using "- ").
+   - When listing courses, tools, technologies, platforms, offerings, or services, format them as clean bullet points with EACH bullet on its own new line (using "- ").
    - When describing academic or curriculum details, mention course codes, subject titles, and departments/faculties where available.
    - Separate distinct topics or paragraphs with double line breaks for easy readability in a compact chat window.
 2. Grounding & Boundaries:
-   - Answer strictly using the verified context passages. Do not invent facts, speculate, or mention external information.
+   - Answer strictly using the verified context passages. Synthesize relevant details provided across the passages (such as specific cloud platforms, DevOps tools, container orchestration, and CI/CD pipelines). Do not invent facts, speculate, or mention external information.
    - Never output bracketed source markers like "[Context 1]" or "[Source 1]" in your final answer text.
    - Do NOT output internal document filenames (such as "[Drive] filename.pdf" or "filename.pdf") or raw URLs in your response text unless the visitor explicitly asked where to download or find a file or page.
-   - If the context does not contain enough information to answer, state politely: "I don't have enough verified information on that topic in our website knowledge base. Please contact our support team for more details."${feedbackDirective}`;
+   - If the context completely lacks information to answer, state politely: "I don't have enough verified information on that topic in our website knowledge base. Please contact our support team for more details."${feedbackDirective}`;
 
   const userPrompt = `Context passages from this website:
 
@@ -827,15 +827,13 @@ Cleanly formatted answer:`;
     }
   })();
 
-  // 7. Determine whether citation links should be attached:
-  // - Provide sources when visitor asks for navigation, pages, services, or documents
-  const isExplicitLinkRequest = /(link|url|source|where|find|read|see|download|page|services|service|about|pricing|contact|docs|documentation|policy|pdf)/i.test(query);
+  // 7. Grounded sources for visual pointing, verification & citations
   const isFallbackOrRefusal = !generatedAnswer || 
     generatedAnswer.includes("I don't have enough verified information") || 
     generatedAnswer.includes("contact our support team");
 
   let sourcesToReturn = [];
-  if (isExplicitLinkRequest && !isFallbackOrRefusal) {
+  if (!isFallbackOrRefusal) {
     sourcesToReturn = passingChunks.slice(0, 3).map(c => ({
       chunk_id: c.id,
       similarity: parseFloat(c.similarity || c.weighted_score || 0),

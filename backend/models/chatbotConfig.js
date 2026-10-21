@@ -57,6 +57,13 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: true,
       },
+      retrieval_threshold: {
+        // Per-site retrieval similarity threshold (0.0-1.0).
+        // null means use system default. Set to 0.55 to broaden retrieval.
+        type: DataTypes.FLOAT,
+        allowNull: true,
+        defaultValue: null,
+      },
       created_at: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW,

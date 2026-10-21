@@ -49,6 +49,7 @@
 
   // Module-level messages array for persistent history
   var messages = [];
+  var lastSentUserQuery = '';
 
   // Session Token helper
   function getSessionToken() {
@@ -478,11 +479,18 @@
         background-color: ${bg} !important;
       }
 
-      .sm-input {
+      .sm-input-wrap {
+        position: relative !important;
         flex: 1 !important;
+        display: flex !important;
+        align-items: center !important;
+      }
+
+      .sm-input {
+        width: 100% !important;
         border: 1px solid rgba(0, 0, 0, 0.15) !important;
         border-radius: 20px !important;
-        padding: 10px 16px !important;
+        padding: 10px 38px 10px 16px !important;
         font-size: 13.5px !important;
         outline: none !important;
         color: ${text} !important;
@@ -492,6 +500,31 @@
 
       .sm-input:focus {
         border-color: ${theme} !important;
+      }
+
+      .sm-mic-btn {
+        position: absolute !important;
+        right: 8px !important;
+        background: transparent !important;
+        border: none !important;
+        cursor: pointer !important;
+        padding: 6px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #888888 !important;
+        border-radius: 50% !important;
+        transition: color 0.2s ease, transform 0.2s ease !important;
+      }
+
+      .sm-mic-btn:hover {
+        color: ${theme} !important;
+        transform: scale(1.1) !important;
+      }
+
+      .sm-mic-btn svg {
+        width: 17px !important;
+        height: 17px !important;
       }
 
       .sm-send-btn {
@@ -768,7 +801,16 @@
         <div class="sm-messages" id="sm-messages"></div>
 
         <div class="sm-input-row">
-          <input type="text" class="sm-input" id="sm-input" placeholder="${escapeHtml(config.placeholder_text || 'Type a message...')}" />
+          <div class="sm-input-wrap">
+            <input type="text" class="sm-input" id="sm-input" placeholder="${escapeHtml(config.placeholder_text || 'Type a message...')}" />
+            <button class="sm-mic-btn" id="sm-mic-btn" type="button" aria-label="Voice input" title="Voice input (Sarvam AI coming soon)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" x2="12" y1="19" y2="22"/>
+              </svg>
+            </button>
+          </div>
           <button class="sm-send-btn" id="sm-send-btn" aria-label="Send message">
             <svg viewBox="0 0 24 24">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -1222,6 +1264,7 @@
 
     var text = inputEl.value ? inputEl.value.trim() : '';
     if (!text || isSending) return;
+    lastSentUserQuery = text;
 
     // Append user message & update persistent history
     var userMsg = { sender: 'user', text: text };
@@ -1301,21 +1344,10 @@
         renderSingleMessage(messagesEl, botMsg);
         messagesEl.scrollTop = messagesEl.scrollHeight;
 
-        // Auto-attempt visual pointing on the first source on the same page
-        if (data && data.sources && Array.isArray(data.sources)) {
-          var firstSamePageSource = null;
-          for (var k = 0; k < data.sources.length; k++) {
-            if (data.sources[k] && isSamePage(data.sources[k].page_url)) {
-              firstSamePageSource = data.sources[k];
-              break;
-            }
-          }
-          if (firstSamePageSource) {
-            setTimeout(function () {
-              attemptVisualPointing(firstSamePageSource, false);
-            }, 300);
-          }
-        }
+        // Auto-attempt visual pointing on the current page for any question or content present on the page
+        setTimeout(function () {
+          performAutoVisualPointing(text, (data && data.response) || '', (data && data.sources) || []);
+        }, 500);
       })
       .catch(function (err) {
         if (messagesEl.contains(typingEl)) {
@@ -1466,23 +1498,15 @@
     }
   }
 
-  function getHost(urlStr) {
+  function isSameDomain(pageUrl, currentHostname) {
     try {
-      var u = new URL(urlStr, window.location.origin);
-      return u.hostname.toLowerCase().replace(/^www\./, '');
+      var curHost = (currentHostname || (typeof window !== 'undefined' && window.location ? window.location.hostname : '')).replace(/^www\./, '');
+      var parsed = new URL(pageUrl, typeof window !== 'undefined' && window.location ? window.location.origin : undefined);
+      var pageHost = parsed.hostname.replace(/^www\./, '');
+      return pageHost === curHost || pageHost.endsWith('.' + curHost);
     } catch (e) {
-      return '';
+      return false;
     }
-  }
-
-  function isSameDomain(sourceUrl) {
-    if (!sourceUrl) return false;
-    var curHost = (window.location.hostname || '').toLowerCase().replace(/^www\./, '');
-    var srcHost = getHost(sourceUrl);
-    if (!srcHost) return true; // relative path
-    if (curHost === 'localhost' || curHost === '127.0.0.1') return true;
-    var regHost = (config.domain || '').toLowerCase().replace(/^www\./, '').split('/')[0];
-    return srcHost === curHost || (regHost && (srcHost === regHost || srcHost.endsWith('.' + regHost)));
   }
 
   function isSamePage(sourceUrl) {
@@ -1492,7 +1516,7 @@
       return false;
     }
 
-    if (!isSameDomain(sUrl)) return false;
+    if (!isSameDomain(sUrl, window.location.hostname)) return false;
 
     var curPath = normalizeUrlPath(window.location.href);
     var srcPath = normalizeUrlPath(sUrl);
@@ -1502,6 +1526,18 @@
   function extractCandidatePhrases(source) {
     var phrases = [];
     if (!source) return phrases;
+
+    // 0. Query context from caller or last sent user query
+    var queryContext = source.userQuery || source.query || lastSentUserQuery || '';
+    if (queryContext) {
+      var cq = cleanText(queryContext).replace(/[?.,:;!]+$/, '').trim();
+      if (cq.length >= 8) phrases.push(cq);
+      var queryClauses = cq.split(/\s+(?:and|or|\?|,|&)\s+/);
+      for (var qc = 0; qc < queryClauses.length; qc++) {
+        var cl = queryClauses[qc].trim();
+        if (cl.length >= 10 && !phrases.includes(cl)) phrases.push(cl);
+      }
+    }
 
     // 1. Check dom_selector JSON snippet
     if (source.dom_selector) {
@@ -1516,7 +1552,18 @@
       } catch (_) {}
     }
 
-    // 2. Check full text_snippet
+    // 2. Check complete chunk_text and text_snippet
+    var textSources = [source.chunk_text, source.text_snippet].filter(Boolean);
+    for (var ts = 0; ts < textSources.length; ts++) {
+      var rawSentences = String(textSources[ts]).split(/[.?!;\n]+/);
+      for (var i = 0; i < rawSentences.length; i++) {
+        var sentence = cleanText(rawSentences[i]);
+        if (sentence.length >= 10 && sentence.length <= 150) {
+          phrases.push(sentence);
+        }
+      }
+    }
+
     var fullSnippet = source.text_snippet ? cleanText(source.text_snippet) : '';
     if (fullSnippet) {
       if (fullSnippet.length <= 120) {
@@ -1525,16 +1572,6 @@
         phrases.push(fullSnippet.slice(0, 100).replace(/[.,:;!?]+$/, '').trim());
       }
 
-      // 3. Extract sentence-level candidates (split by punctuation)
-      var rawSentences = String(source.text_snippet).split(/[.?!;\n]+/);
-      for (var i = 0; i < rawSentences.length; i++) {
-        var sentence = cleanText(rawSentences[i]);
-        if (sentence.length >= 10 && sentence.length <= 120) {
-          phrases.push(sentence);
-        }
-      }
-
-      // 4. Extract 4-to-7 word n-gram chunks
       var words = fullSnippet.split(' ');
       if (words.length >= 4) {
         for (var w = 0; w < Math.min(words.length - 3, 5); w += 2) {
@@ -1544,18 +1581,19 @@
       }
     }
 
-    // 5. Source label fallback (e.g. from nav_links: "About", "Services")
+    // 3. Source label fallback (e.g. from nav_links: "About", "Services")
     if (source.label || source.page_title) {
       var rawLabel = source.label || source.page_title;
       var cleanLabel = cleanText(rawLabel.split(' - ')[0].split(' | ')[0].split('⚡')[0]);
-      if (cleanLabel.length >= 3) {
+      var brandName = cleanText((config && config.website_name) || 'NovaTech Solutions');
+      if (cleanLabel.length >= 3 && cleanLabel !== brandName && cleanLabel !== 'novatech' && cleanLabel !== 'novatech solutions' && cleanLabel !== 'solutions') {
         phrases.push(cleanLabel);
         if (cleanLabel === 'about') phrases.push('about us');
         if (cleanLabel === 'services') phrases.push('our services');
       }
     }
 
-    // 6. Page URL slug fallback
+    // 4. Page URL slug fallback
     if (source.page_url) {
       try {
         var pPath = new URL(source.page_url, window.location.origin).pathname;
@@ -1568,18 +1606,30 @@
       } catch (_) {}
     }
 
-    // Deduplicate and sort by length descending (longest / most specific first)
+    // Deduplicate and rank candidate phrases (phrases matching user query keywords rank highest)
+    var qTokens = queryContext ? cleanText(queryContext).split(/\s+/).filter(function (w) {
+      return w.length >= 3 && !['what', 'where', 'when', 'which', 'how', 'who', 'the', 'and', 'are', 'can'].includes(w);
+    }) : [];
+
     var seen = {};
-    var unique = [];
+    var scoredPhrases = [];
     for (var p = 0; p < phrases.length; p++) {
       var item = phrases[p].replace(/[.,:;!?]+$/, '').trim();
       if (item && !seen[item] && item.length >= 3) {
         seen[item] = true;
-        unique.push(item);
+        var pScore = item.length;
+        if (qTokens.length > 0) {
+          var itemWords = item.split(/\s+/);
+          for (var iw = 0; iw < itemWords.length; iw++) {
+            if (qTokens.includes(itemWords[iw])) pScore += 60;
+          }
+        }
+        scoredPhrases.push({ phrase: item, score: pScore });
       }
     }
-    unique.sort(function (a, b) { return b.length - a.length; });
-    return unique;
+
+    scoredPhrases.sort(function (a, b) { return b.score - a.score; });
+    return scoredPhrases.map(function (sp) { return sp.phrase; });
   }
 
   function extractSnippet(source) {
@@ -1587,19 +1637,146 @@
     return phrases.length > 0 ? phrases[0] : null;
   }
 
+  /**
+   * longestCommonSubstring — returns the length of the longest common substring
+   * between strings a and b. Used for fuzzy text matching when exact inclusion fails.
+   */
+  function longestCommonSubstring(a, b) {
+    var max = 0;
+    for (var i = 0; i < a.length; i++) {
+      for (var j = 0; j < b.length; j++) {
+        var len = 0;
+        while (i + len < a.length && j + len < b.length && a[i + len] === b[j + len]) len++;
+        if (len > max) max = len;
+      }
+    }
+    return max;
+  }
+
+  /**
+   * findMatchingElement — robust fuzzy element finder.
+   * Normalises whitespace before comparison, handles minor live-page text
+   * differences vs stored snippet (spacing, smart quotes, etc.).
+   */
+  function findMatchingElement(snippet) {
+    if (!snippet || snippet.length < 8) return null;
+    var normSnippet = cleanText(snippet);
+    if (!normSnippet || normSnippet.length < 5) return null;
+
+    var candidates = document.querySelectorAll(
+      'p, li, h1, h2, h3, h4, h5, h6, dt, dd, td, th, blockquote, div, span, section, summary, button'
+    );
+    var bestMatch = null;
+    var shortestLen = Infinity;
+    var bestScore = 0;
+
+    for (var fi = 0; fi < candidates.length; fi++) {
+      var fel = candidates[fi];
+      if (containerEl && containerEl.contains(fel)) continue;
+
+      if (fel.id === 'root' || fel.tagName === 'BODY' || fel.tagName === 'MAIN') continue;
+      if (fel.closest && fel.closest('header, nav, footer, #sitemind-widget-container')) continue;
+
+      var fText = cleanText(fel.innerText || fel.textContent || '');
+      if (fText.length < 5) continue;
+
+      // Exact substring inclusion in either direction
+      if (fText.includes(normSnippet) || (fText.length >= 10 && normSnippet.includes(fText))) {
+        if (fText.length < shortestLen) {
+          shortestLen = fText.length;
+          bestMatch = fel;
+        }
+      } else if (!bestMatch) {
+        var overlapLength = longestCommonSubstring(normSnippet, fText);
+        var score = overlapLength / Math.min(normSnippet.length, fText.length);
+        if (score > 0.65 && score > bestScore) {
+          bestScore = score;
+          bestMatch = fel;
+          shortestLen = fText.length;
+        }
+      }
+    }
+    return bestMatch;
+  }
+
+  function findHeadingMatchingQuery(query) {
+    if (!query || query.length < 5) return null;
+    var normQ = cleanText(query).replace(/[?.,:;!]+$/, '').trim();
+    if (!normQ || normQ.length < 5) return null;
+
+    var elements = document.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6, summary, dt, [role="heading"], button, p, strong, div'
+    );
+
+    var clauses = [normQ];
+    var subClauses = normQ.split(/\s+(?:and|or|\?|,|&)\s+/);
+    for (var c = 0; c < subClauses.length; c++) {
+      var sc = subClauses[c].trim();
+      if (sc.length >= 12 && !clauses.includes(sc)) {
+        clauses.push(sc);
+      }
+    }
+
+    var bestEl = null;
+    var shortestLen = Infinity;
+
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (containerEl && containerEl.contains(el)) continue;
+      if (el.closest && el.closest('header, nav, footer, #sitemind-widget-container')) continue;
+      if (el.id === 'root' || el.tagName === 'BODY' || el.tagName === 'MAIN') continue;
+
+      var elText = cleanText(el.innerText || el.textContent || '').replace(/[?.,:;!]+$/, '').trim();
+      if (elText.length < 5 || elText.length > 350) continue;
+
+      for (var ci = 0; ci < clauses.length; ci++) {
+        var clause = clauses[ci];
+        if (elText === clause || elText.includes(clause) || clause.includes(elText)) {
+          if (elText.length < shortestLen) {
+            shortestLen = elText.length;
+            bestEl = el;
+          }
+        }
+      }
+    }
+
+    return bestEl;
+  }
+
   function handleSourceHighlightClick(source) {
     if (!source || !source.page_url) return;
     var pageUrl = String(source.page_url).trim();
+    var snippet = extractSnippet(source) || source.page_title || '';
+    var domainResult = isSameDomain(pageUrl, window.location.hostname);
 
-    // 1. Same page: skip navigation and highlight directly
-    if (isSamePage(pageUrl)) {
-      attemptVisualPointing(source, true);
+    // 1. First, check if the content is already present on the CURRENT page!
+    // In SPAs and single-page designs (like NovaTech), content for services, about, etc.
+    // often lives directly on the homepage. Highlighting on the current page avoids unnecessary 404 navigations.
+    var currentEl = attemptVisualPointing(source, true);
+    if (currentEl) {
+      if (window.SITEMIND_DEBUG === true) {
+        console.log('[SiteMind VP Debug] Content found and highlighted directly on current page:', currentEl);
+      }
       return;
     }
 
-    // 2. Same domain: navigate and pass pending highlight via sessionStorage & hash
-    if (isSameDomain(pageUrl)) {
-      var snippet = extractSnippet(source) || source.page_title || '';
+    var samePageResult = isSamePage(pageUrl);
+    if (samePageResult) {
+      // Already on page and attemptVisualPointing was tried above
+      return;
+    }
+
+    // 2. Same domain, not on current page: navigate and pass pending highlight via sessionStorage & hash
+    if (domainResult) {
+      if (window.SITEMIND_DEBUG === true) {
+        console.log('[SiteMind VP Debug] Show on page (navigating same domain):', {
+          source: source,
+          snippet: snippet,
+          domainComparison: domainResult,
+          elementFound: null,
+          highlightStatus: 'navigating-same-domain'
+        });
+      }
       try {
         sessionStorage.setItem('sitemind_pending_highlight', JSON.stringify(source));
       } catch (_) {}
@@ -1613,6 +1790,15 @@
     }
 
     // 3. Different domain: open in new tab
+    if (window.SITEMIND_DEBUG === true) {
+      console.log('[SiteMind VP Debug] Show on page (external domain):', {
+        source: source,
+        snippet: snippet,
+        domainComparison: domainResult,
+        elementFound: null,
+        highlightStatus: 'opened-external-new-tab'
+      });
+    }
     window.open(pageUrl, '_blank', 'noopener,noreferrer');
   }
 
@@ -1646,67 +1832,170 @@
       if (sourceToHighlight) {
         var attempts = 0;
         var maxAttempts = 10;
-        var timer = setInterval(function () {
+        // 1500ms first attempt — allows new page DOM to fully render after navigation.
+        // Subsequent retries at 500ms intervals.
+        var firstDelay = 1500;
+        var retryDelay = 500;
+        var _doAttempt = function () {
           attempts++;
           var ok = attemptVisualPointing(sourceToHighlight, true);
           if (ok || attempts >= maxAttempts) {
-            clearInterval(timer);
-            try {
-              sessionStorage.removeItem('sitemind_pending_highlight');
-            } catch (_) {}
+            try { sessionStorage.removeItem('sitemind_pending_highlight'); } catch (_) {}
+            return;
           }
-        }, 350);
+          setTimeout(_doAttempt, retryDelay);
+        };
+        setTimeout(_doAttempt, firstDelay);
       }
     } catch (_) {}
+  }
+
+  function executeVisualHighlight(targetEl) {
+    if (!targetEl) return false;
+
+    // Elevate small inline tags to readable block parent if appropriate
+    if (targetEl.tagName === 'SPAN' || targetEl.tagName === 'B' || targetEl.tagName === 'STRONG' || targetEl.tagName === 'EM') {
+      var parentBlock = targetEl.closest('p, li, h1, h2, h3, h4, h5, h6, a, div, summary, dt');
+      if (parentBlock && parentBlock.innerText && cleanText(parentBlock.innerText).length < 350) {
+        targetEl = parentBlock;
+      }
+    }
+
+    var styleId = 'sitemind-highlight-style';
+    var styleInjectionOk = false;
+    var existingStyle = document.getElementById(styleId);
+    if (!existingStyle) {
+      try {
+        var styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        styleEl.textContent = [
+          '@keyframes sitemindGlow {',
+          '  0% { box-shadow: 0 0 0 4px rgba(37,99,235,0.4), 0 0 20px rgba(245,158,11,0.7); }',
+          '  50% { box-shadow: 0 0 0 2px rgba(245,158,11,0.3), 0 0 10px rgba(245,158,11,0.4); }',
+          '  100% { box-shadow: 0 0 0 4px rgba(37,99,235,0.4), 0 0 20px rgba(245,158,11,0.7); }',
+          '}',
+          '.sitemind-highlight-active {',
+          '  outline: 4px solid #2563eb !important;',
+          '  outline-offset: 4px !important;',
+          '  background-color: rgba(254,240,138,0.75) !important;',
+          '  border-radius: 6px !important;',
+          '  transition: all 0.3s ease !important;',
+          '  animation: sitemindGlow 1.4s infinite ease-in-out !important;',
+          '}'
+        ].join('\n');
+        document.head.appendChild(styleEl);
+        styleInjectionOk = true;
+      } catch (cspErr) {
+        logDevOnly('visual-point: stylesheet injection blocked by CSP (' + cspErr.message + '), using inline style fallback');
+        styleInjectionOk = false;
+      }
+    } else {
+      styleInjectionOk = true;
+    }
+
+    // Clear any previous active highlights across document so only 1 element is ever highlighted
+    var prevActive = document.querySelectorAll('.sitemind-highlight-active');
+    for (var pi = 0; pi < prevActive.length; pi++) {
+      try {
+        prevActive[pi].classList.remove('sitemind-highlight-active');
+        prevActive[pi].style.backgroundColor = '';
+        prevActive[pi].style.outline = '';
+        prevActive[pi].style.outlineOffset = '';
+        prevActive[pi].style.borderRadius = '';
+        prevActive[pi].style.transition = '';
+      } catch (_) {}
+    }
+
+    // Clean up any old floating beacon badge if present
+    var oldBeacon = document.getElementById('sitemind-pointer-beacon');
+    if (oldBeacon && oldBeacon.parentNode) {
+      oldBeacon.parentNode.removeChild(oldBeacon);
+    }
+    var strayBadges = document.querySelectorAll('[id*="beacon"], [class*="beacon"], [class*="pointer-badge"]');
+    for (var bi = 0; bi < strayBadges.length; bi++) {
+      if (strayBadges[bi].parentNode) strayBadges[bi].parentNode.removeChild(strayBadges[bi]);
+    }
+
+    // Apply highlight and scroll smoothly to target element
+    try {
+      if (styleInjectionOk) {
+        targetEl.classList.add('sitemind-highlight-active');
+      } else {
+        targetEl.style.backgroundColor = 'rgba(254, 240, 138, 0.75)';
+        targetEl.style.transition = 'all 0.3s ease';
+        targetEl.style.outline = '4px solid #2563eb';
+        targetEl.style.outlineOffset = '4px';
+        targetEl.style.borderRadius = '6px';
+      }
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (scrollErr) {
+      logDevOnly('visual-point: scrollIntoView failed: ' + scrollErr.message);
+    }
+
+    if (window.SITEMIND_DEBUG === true) {
+      console.log('[SiteMind VP Debug] Highlight applied to element:', targetEl, '| styleInjectionOk:', styleInjectionOk);
+    }
+
+    // Clean up highlights after 4000ms
+    setTimeout(function () {
+      try {
+        if (styleInjectionOk) {
+          targetEl.classList.remove('sitemind-highlight-active');
+        } else {
+          targetEl.style.backgroundColor = '';
+          targetEl.style.transition = '';
+          targetEl.style.outline = '';
+          targetEl.style.outlineOffset = '';
+          targetEl.style.borderRadius = '';
+        }
+      } catch (_) {}
+    }, 4000);
+
+    return { success: true, element: targetEl, fellBack: !styleInjectionOk };
   }
 
   function attemptVisualPointing(source, isManual) {
     try {
       if (!source) return false;
 
-      var candidatePhrases = extractCandidatePhrases(source);
-      var pagePath = '';
-      if (source.page_url) {
-        try {
-          pagePath = new URL(source.page_url, window.location.origin).pathname.replace(/\/+$/, '').toLowerCase();
-        } catch (_) {}
+      if (source.nodeType === 1) {
+        return executeVisualHighlight(source);
+      }
+      if (source.element && source.element.nodeType === 1) {
+        return executeVisualHighlight(source.element);
       }
 
+      var candidatePhrases = extractCandidatePhrases(source);
       var matchedEl = null;
-      var shortestLen = Infinity;
 
-      // Tier 1: Look for exact navigation links or buttons on current page (e.g. navbar links to About/Services)
-      if (pagePath && pagePath !== '/' && pagePath !== '') {
-        var allLinks = document.querySelectorAll('a, button, nav *');
-        for (var l = 0; l < allLinks.length; l++) {
-          var link = allLinks[l];
-          if (containerEl && containerEl.contains(link)) continue;
-          var href = (link.getAttribute('href') || link.getAttribute('to') || '').toLowerCase();
-          var linkText = cleanText(link.innerText || link.textContent || '');
-          if (href === pagePath || href.endsWith(pagePath) || (linkText && candidatePhrases.some(function (p) { return p.length >= 3 && linkText.includes(p); }))) {
-            matchedEl = link;
-            break;
-          }
+      // Tier 1 (Primary Content Match): Use robust findMatchingElement on candidate phrases
+      for (var cpi = 0; cpi < candidatePhrases.length; cpi++) {
+        var cp = candidatePhrases[cpi];
+        if (cp && cp.length >= 8) {
+          matchedEl = findMatchingElement(cp);
+          if (matchedEl) break;
         }
       }
 
       // Tier 2: Search semantic leaf content elements for contiguous phrase matches
       if (!matchedEl) {
         var semanticLeaves = document.querySelectorAll(
-          'h1, h2, h3, h4, h5, h6, p, li, a, button, blockquote, dt, dd, td, th'
+          'h1, h2, h3, h4, h5, h6, p, li, a, button, blockquote, dt, dd, td, th, summary'
         );
 
         for (var p = 0; p < candidatePhrases.length; p++) {
           var phrase = candidatePhrases[p];
-          if (phrase.length < 3) continue;
+          if (phrase.length < 5) continue;
 
+          var shortestLen = Infinity;
           for (var i = 0; i < semanticLeaves.length; i++) {
             var el = semanticLeaves[i];
             if (containerEl && containerEl.contains(el)) continue;
+            if (el.closest && el.closest('header, nav, footer, #sitemind-widget-container')) continue;
             var elText = cleanText(el.innerText || el.textContent || '');
             if (!elText) continue;
 
-            if (elText.includes(phrase)) {
+            if (elText.includes(phrase) || phrase.includes(elText)) {
               if (elText.length < shortestLen) {
                 matchedEl = el;
                 shortestLen = elText.length;
@@ -1714,9 +2003,7 @@
             }
           }
 
-          if (matchedEl && shortestLen < 500) {
-            break;
-          }
+          if (matchedEl) break;
         }
       }
 
@@ -1725,44 +2012,44 @@
         var generalElements = document.querySelectorAll('span, b, strong, em, div, section, article');
         for (var gp = 0; gp < candidatePhrases.length; gp++) {
           var gPhrase = candidatePhrases[gp];
-          if (gPhrase.length < 3) continue;
+          if (gPhrase.length < 5) continue;
 
           for (var gi = 0; gi < generalElements.length; gi++) {
             var gel = generalElements[gi];
             if (containerEl && containerEl.contains(gel)) continue;
             if (gel.tagName === 'SCRIPT' || gel.tagName === 'STYLE' || gel.tagName === 'SVG') continue;
+            if (gel.closest && gel.closest('header, nav, footer, #sitemind-widget-container')) continue;
             var gText = cleanText(gel.innerText || gel.textContent || '');
             if (!gText || gText.length > 500) continue;
 
             if (gText.includes(gPhrase)) {
-              if (gText.length < shortestLen) {
-                matchedEl = gel;
-                shortestLen = gText.length;
-              }
+              matchedEl = gel;
+              break;
             }
           }
-          if (matchedEl && shortestLen < 400) break;
+          if (matchedEl) break;
         }
       }
 
       // Tier 4: Multi-keyword density fallback
       if (!matchedEl && candidatePhrases.length > 0) {
-        var stopWords = { the: 1, and: 1, with: 1, that: 1, this: 1, from: 1, for: 1, our: 1, you: 1, page: 1, site: 1, more: 1, your: 1 };
+        var stopWords = { the: 1, and: 1, with: 1, that: 1, this: 1, from: 1, for: 1, our: 1, you: 1, page: 1, site: 1, more: 1, your: 1, what: 1, where: 1, how: 1 };
         var allWords = [];
-        for (var cp = 0; cp < candidatePhrases.length; cp++) {
-          var wArr = candidatePhrases[cp].split(' ').filter(function (w) { return w.length >= 3 && !stopWords[w]; });
+        for (var cpIdx = 0; cpIdx < candidatePhrases.length; cpIdx++) {
+          var wArr = candidatePhrases[cpIdx].split(' ').filter(function (w) { return w.length >= 3 && !stopWords[w]; });
           for (var wa = 0; wa < wArr.length; wa++) {
             if (!allWords.includes(wArr[wa])) allWords.push(wArr[wa]);
           }
         }
 
         if (allWords.length >= 1) {
-          var allCandidates = document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, a, button, span, div');
+          var allCandidates = document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, a, button, span, div, summary, dt');
           var bestScore = -999;
           for (var j = 0; j < allCandidates.length; j++) {
             var cel = allCandidates[j];
             if (containerEl && containerEl.contains(cel)) continue;
             if (cel.tagName === 'SCRIPT' || cel.tagName === 'STYLE' || cel.tagName === 'SVG') continue;
+            if (cel.closest && cel.closest('header, nav, footer, #sitemind-widget-container')) continue;
 
             var cText = cleanText(cel.innerText || cel.textContent || '');
             if (!cText || cText.length > 400) continue;
@@ -1786,122 +2073,65 @@
         return false;
       }
 
-      // Elevate small inline tags to readable block parent if appropriate
-      var targetEl = matchedEl;
-      if (targetEl.tagName === 'SPAN' || targetEl.tagName === 'B' || targetEl.tagName === 'STRONG' || targetEl.tagName === 'EM') {
-        var parentBlock = targetEl.closest('p, li, h1, h2, h3, h4, h5, h6, a, div');
-        if (parentBlock && parentBlock.innerText && cleanText(parentBlock.innerText).length < 350) {
-          targetEl = parentBlock;
-        }
-      }
-
-      // 1. Inject or update style definition
-      var styleId = 'sitemind-highlight-style';
-      var existingStyle = document.getElementById(styleId);
-      if (!existingStyle) {
-        var styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        styleEl.textContent = `
-          @keyframes sitemindBeaconBounce {
-            0% { transform: translateY(0); }
-            100% { transform: translateY(-7px); }
-          }
-          @keyframes sitemindGlow {
-            0% {
-              box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.4), 0 0 25px rgba(245, 158, 11, 0.85);
-            }
-            50% {
-              box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 0 15px rgba(245, 158, 11, 0.5);
-            }
-            100% {
-              box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.4), 0 0 25px rgba(245, 158, 11, 0.85);
-            }
-          }
-          .sitemind-highlight-active {
-            outline: 4px solid #2563eb !important;
-            outline-offset: 4px !important;
-            background-color: rgba(254, 240, 138, 0.75) !important;
-            border-radius: 6px !important;
-            transition: all 0.3s ease !important;
-            animation: sitemindGlow 1.4s infinite ease-in-out !important;
-          }
-          #sitemind-pointer-beacon {
-            position: absolute;
-            z-index: 2147483647;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
-            color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 13px;
-            font-weight: 700;
-            padding: 6px 14px;
-            border-radius: 20px;
-            box-shadow: 0 4px 18px rgba(37, 99, 235, 0.45), 0 2px 6px rgba(0,0,0,0.25);
-            pointer-events: none;
-            animation: sitemindBeaconBounce 0.9s infinite alternate ease-in-out;
-            transition: opacity 0.4s ease;
-          }
-          #sitemind-pointer-beacon::after {
-            content: "";
-            position: absolute;
-            bottom: -6px;
-            left: 20px;
-            width: 0;
-            height: 0;
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-top: 6px solid #7c3aed;
-          }
-        `;
-        document.head.appendChild(styleEl);
-      }
-
-      // 2. Position floating beacon badge directly above target element
-      var beacon = document.getElementById('sitemind-pointer-beacon');
-      if (!beacon) {
-        beacon = document.createElement('div');
-        beacon.id = 'sitemind-pointer-beacon';
-        beacon.innerHTML = '<span>📍 AI Assistant Pointed Here</span>';
-        document.body.appendChild(beacon);
-      }
-
-      var rect = targetEl.getBoundingClientRect();
-      var scrollX = window.pageXOffset || document.documentElement.scrollLeft || 0;
-      var scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
-      var topPos = rect.top + scrollY - 38;
-      if (topPos < 10) topPos = rect.bottom + scrollY + 10;
-      var leftPos = Math.max(10, rect.left + scrollX);
-
-      beacon.style.top = topPos + 'px';
-      beacon.style.left = leftPos + 'px';
-      beacon.style.opacity = '1';
-      beacon.style.display = 'inline-flex';
-
-      // 3. Highlight target element
-      targetEl.classList.add('sitemind-highlight-active');
-      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-      // 4. Clean up after 5 seconds
-      setTimeout(function () {
-        try {
-          targetEl.classList.remove('sitemind-highlight-active');
-          if (beacon) {
-            beacon.style.opacity = '0';
-            setTimeout(function () {
-              if (beacon && beacon.parentNode) {
-                beacon.parentNode.removeChild(beacon);
-              }
-            }, 400);
-          }
-        } catch (_) {}
-      }, 5000);
-
-      return true;
+      return executeVisualHighlight(matchedEl);
     } catch (err) {
       logDevOnly('visual-point-failed: ' + err.message);
       return false;
+    }
+  }
+
+  function performAutoVisualPointing(userQuery, botResponse, sources) {
+    try {
+      if (!isDomainAllowed()) return;
+
+      // 1. Direct Heading / Question match for the question asked
+      if (userQuery && userQuery.length >= 5) {
+        var headingEl = findHeadingMatchingQuery(userQuery);
+        if (headingEl) {
+          executeVisualHighlight(headingEl);
+          return;
+        }
+      }
+
+      // 2. Try matching grounded sources on the page
+      if (sources && Array.isArray(sources) && sources.length > 0) {
+        var samePageSources = [];
+        var otherSources = [];
+        for (var i = 0; i < sources.length; i++) {
+          if (sources[i] && isSamePage(sources[i].page_url)) {
+            samePageSources.push(sources[i]);
+          } else if (sources[i]) {
+            otherSources.push(sources[i]);
+          }
+        }
+        var candidateSources = samePageSources.concat(otherSources);
+        for (var s = 0; s < candidateSources.length; s++) {
+          var srcObj = Object.assign({}, candidateSources[s], { userQuery: userQuery });
+          var pointed = attemptVisualPointing(srcObj, false);
+          if (pointed) return;
+        }
+      }
+
+      // 3. Fallback: Check key sentences from the bot answer against host page content
+      if (botResponse && botResponse.length >= 15) {
+        var cleanedAnswer = botResponse
+          .replace(/```[\s\S]*?```/g, ' ')
+          .replace(/\[.*?\]\(.*?\)/g, ' ')
+          .replace(/[*_#`>-]/g, ' ');
+        var answerSentences = cleanedAnswer.split(/[.?!;\n]+/);
+        for (var a = 0; a < answerSentences.length; a++) {
+          var sent = cleanText(answerSentences[a]);
+          if (sent.length >= 20 && sent.length <= 150) {
+            var matched = findMatchingElement(sent);
+            if (matched) {
+              executeVisualHighlight(matched);
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logDevOnly('auto-visual-pointing failed: ' + e.message);
     }
   }
 

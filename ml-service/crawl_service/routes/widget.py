@@ -74,7 +74,7 @@ def public_widget_query():
     token = body.get("token") or request.args.get("token")
     message = body.get("message", "").strip() or body.get("query", "").strip()
     session_token = body.get("session_token") or body.get("session_id")
-    current_page = (body.get("current_url") or request.headers.get("Referer") or "").strip()
+    current_page = (body.get("current_page") or body.get("current_url") or request.headers.get("Referer") or "").strip()
 
     if not token:
         return jsonify({"error": "token is required"}), 400
@@ -171,13 +171,27 @@ def public_widget_query():
             seen_page_urls = set()
             enriched_sources = []
 
-            for s in raw_sources:
+            # Prioritize sources matching current page or non-PDF web pages
+            norm_current = clean_page_cmp(current_page)
+            def source_priority(s):
+                cid = s.get("chunk_id")
+                info = chunk_map.get(cid, {})
+                p_url = (info.get("page_url") or s.get("page_url") or "").strip()
+                p_norm = clean_page_cmp(p_url)
+                is_curr = 1 if (norm_current and p_norm == norm_current) else 0
+                is_pdf = 1 if (p_url.lower().endswith(".pdf") or "drive.google.com" in p_url.lower()) else 0
+                return (is_curr * 10) + ((1 - is_pdf) * 3) + float(s.get("similarity") or 0)
+
+            sorted_raw_sources = sorted(raw_sources, key=source_priority, reverse=True)
+
+            for s in sorted_raw_sources:
                 cid = s.get("chunk_id")
                 chunk_info = chunk_map.get(cid, {})
                 page_url = (chunk_info.get("page_url") or s.get("page_url") or "").strip()
                 page_title = chunk_info.get("page_title") or s.get("page_title") or "Source"
                 dom_selector = chunk_info.get("dom_selector") or s.get("dom_selector")
                 text_snippet = chunk_info.get("text_snippet") or s.get("text_snippet")
+                chunk_text = chunk_info.get("chunk_text") or text_snippet or ""
 
                 if not page_url:
                     continue
@@ -204,9 +218,10 @@ def public_widget_query():
                     "page_title": page_title,
                     "dom_selector": effective_dom_selector,
                     "text_snippet": text_snippet,
+                    "chunk_text": chunk_text,
                 })
 
-                if len(enriched_sources) >= 2:
+                if len(enriched_sources) >= 3:
                     break
 
             # -------------------------------------------------------------
@@ -307,75 +322,82 @@ def public_widget_query():
                     if not norm_url or norm_url in seen_nav_urls:
                         continue
 
-                    score = 0
                     parsed = urlparse(p_url)
                     path_slug = parsed.path.strip("/").lower()
                     last_seg = path_slug.split("/")[-1] if path_slug else ""
 
+                    # Exclude root homepage from cross-page nav recommendations unless user explicitly asked for home
+                    if not last_seg and not any(h in query_lower for h in ("home", "homepage", "main page")):
+                        continue
+
                     is_website_page = bool(clean_host(p_url) == reg_host)
                     is_pdf_doc = p_url.lower().endswith(".pdf") or "drive.google.com" in p_url.lower()
 
+                    score = 0
                     if is_website_page:
-                        score += 12
-                    if "page" in query_lower and not is_pdf_doc:
-                        score += 15
+                        score += 10
+
+                    # Specific matching against query and answer
+                    if path_slug and path_slug in query_lower:
+                        score += 40
+                    elif last_seg and len(last_seg) > 2 and last_seg in query_lower:
+                        score += 35
 
                     if p_url.lower() in answer_lower:
-                        score += 15
+                        score += 30
                     elif path_slug and path_slug in answer_lower:
-                        score += 10
+                        score += 25
                     elif last_seg and len(last_seg) > 2 and last_seg in answer_lower:
-                        score += 8
-
-                    if path_slug and path_slug in query_lower:
-                        score += 15
-                    elif last_seg and len(last_seg) > 2 and last_seg in query_lower:
-                        score += 12
+                        score += 20
 
                     title_lower = (c.get("page_title") or "").lower()
-                    if title_lower and title_lower in answer_lower:
-                        score += 8
-                    if title_lower and title_lower in query_lower:
-                        score += 8
+                    clean_title = title_lower.split(" - ")[0].split(" | ")[0].strip()
+                    if clean_title and clean_title in query_lower:
+                        score += 25
+                    if clean_title and clean_title in answer_lower:
+                        score += 15
 
                     if any(s.get("chunk_id") == c.get("chunk_id") for s in raw_sources):
-                        score += 6
-
-                    chunk_text_lower = (c.get("chunk_text") or "").lower()
-                    if query_lower and any(kw in chunk_text_lower for kw in query_lower.split() if len(kw) > 3):
-                        score += 2
+                        score += 10
 
                     scored_chunks.append((score, c))
 
                 scored_chunks.sort(key=lambda x: x[0], reverse=True)
 
-                for score, c in scored_chunks:
-                    p_url = c["page_url"]
-                    norm_url = clean_page_cmp(p_url)
-                    if norm_url in seen_nav_urls:
-                        continue
-                    seen_nav_urls.add(norm_url)
+                if scored_chunks:
+                    top_score = scored_chunks[0][0]
+                    # Only include links that are genuinely relevant (score >= 30) and competitive with top match
+                    min_score = max(30, top_score * 0.70)
+                    for score, c in scored_chunks:
+                        if score < min_score:
+                            break
 
-                    title = (c.get("page_title") or "").strip()
-                    parsed = urlparse(p_url)
-                    seg = parsed.path.strip("/").split("/")[-1]
-                    seg_label = seg.replace("-", " ").replace("_", " ").title() if seg else ""
+                        p_url = c["page_url"]
+                        norm_url = clean_page_cmp(p_url)
+                        if norm_url in seen_nav_urls:
+                            continue
+                        seen_nav_urls.add(norm_url)
 
-                    if seg_label and (not title or "novatech" in title.lower() or "solution" in title.lower() or seg_label.lower() in ("services", "resources", "about", "contact", "pricing")):
-                        label = f"{seg_label} Page" if seg_label.lower() in ("services", "resources", "pricing") else seg_label
-                    elif title:
-                        label = title.split(" | ")[0].split(" - ")[0].strip() or title
-                    else:
-                        label = "Visit Page"
+                        title = (c.get("page_title") or "").strip()
+                        parsed = urlparse(p_url)
+                        seg = parsed.path.strip("/").split("/")[-1]
+                        seg_label = seg.replace("-", " ").replace("_", " ").title() if seg else ""
 
-                    nav_links.append({
-                        "label": label,
-                        "url": p_url,
-                        "dom_selector": c.get("dom_selector"),
-                        "text_snippet": c.get("text_snippet")
-                    })
-                    if len(nav_links) >= 3:
-                        break
+                        if seg_label:
+                            label = f"{seg_label} Page" if seg_label.lower() in ("services", "resources", "about", "pricing") else seg_label
+                        elif title:
+                            label = title.split(" | ")[0].split(" - ")[0].strip() or title
+                        else:
+                            label = "Visit Page"
+
+                        nav_links.append({
+                            "label": label,
+                            "url": p_url,
+                            "dom_selector": c.get("dom_selector"),
+                            "text_snippet": c.get("text_snippet")
+                        })
+                        if len(nav_links) >= 3:
+                            break
 
             message_id = data.get("message_id") or data.get("messageId")
             if not message_id:

@@ -5,7 +5,7 @@ import {
   ArrowRight, Play, ShieldCheck, Globe, Database, Bot, Brain,
   RefreshCw, MousePointerClick, BarChart3, ThumbsUp, Lock,
   FileSearch, Cpu, Layers, Zap, ArrowUpRight, Github, BookOpen,
-  FileText, Mail, CheckCircle2, MessageSquare, FlaskConical, Code2, CheckSquare,
+  FileText, Mail, CheckCircle2, MessageSquare, FlaskConical, Code2, CheckSquare, Mic,
 } from 'lucide-react';
 
 import Navbar from '../components/landing/Navbar';
@@ -426,6 +426,7 @@ const Landing = () => (
           <div className="flex items-center gap-2 px-2.5 py-2 rounded-[10px] border border-zinc-200 dark:border-border-dark bg-zinc-50 dark:bg-[#0E0E12]">
             <MessageSquare className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
             <span className="flex-1 text-[11px] text-zinc-400">Ask a question…</span>
+            <Mic className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer" />
             <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center">
               <ArrowRight className="w-3 h-3 text-[#09090B]" />
             </div>
