@@ -527,6 +527,34 @@
         height: 17px !important;
       }
 
+      .sm-mic-recording {
+        color: #ef4444 !important;
+        background-color: rgba(239, 68, 68, 0.15) !important;
+        animation: sm-mic-pulse 1.2s infinite ease-in-out !important;
+      }
+
+      .sm-mic-transcribing {
+        color: #888888 !important;
+        opacity: 0.6 !important;
+        cursor: wait !important;
+        animation: sm-mic-spin 1s infinite linear !important;
+      }
+
+      .sm-input-recording {
+        border-color: rgba(239, 68, 68, 0.8) !important;
+        box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+      }
+
+      @keyframes sm-mic-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.15); box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+      }
+
+      @keyframes sm-mic-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
       .sm-send-btn {
         width: 36px !important;
         height: 36px !important;
@@ -1114,8 +1142,147 @@
       }
     });
 
+    var micBtn = shadowRoot.getElementById('sm-mic-btn');
+    if (micBtn) {
+      setupVoiceInput(micBtn, inputEl);
+    }
+
     // Initialize resizable window functionality
     setupPanelResize(panel);
+  }
+
+  function setupVoiceInput(micBtn, inputEl) {
+    if (!micBtn || !inputEl) return;
+
+    var mediaRecorder = null;
+    var audioChunks = [];
+    var mediaStream = null;
+    var isRecording = false;
+    var isTranscribing = false;
+    var originalPlaceholder = inputEl.getAttribute('placeholder') || 'Type a message...';
+
+    function setRecordingUI(recording) {
+      isRecording = recording;
+      if (recording) {
+        micBtn.classList.add('sm-mic-recording');
+        micBtn.setAttribute('title', 'Click to finish recording (listening...)');
+        inputEl.setAttribute('placeholder', 'Listening... speak now');
+        inputEl.classList.add('sm-input-recording');
+      } else {
+        micBtn.classList.remove('sm-mic-recording');
+        micBtn.setAttribute('title', 'Voice input (Sarvam AI)');
+        inputEl.setAttribute('placeholder', originalPlaceholder);
+        inputEl.classList.remove('sm-input-recording');
+      }
+    }
+
+    function setTranscribingUI(transcribing) {
+      isTranscribing = transcribing;
+      if (transcribing) {
+        micBtn.classList.add('sm-mic-transcribing');
+        micBtn.setAttribute('title', 'Transcribing with Sarvam AI...');
+        inputEl.setAttribute('placeholder', 'Transcribing voice...');
+      } else {
+        micBtn.classList.remove('sm-mic-transcribing');
+        inputEl.setAttribute('placeholder', originalPlaceholder);
+      }
+    }
+
+    micBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (isTranscribing) return;
+
+      if (isRecording) {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        setRecordingUI(false);
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Voice input is not supported in this browser.');
+        return;
+      }
+
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function (stream) {
+          mediaStream = stream;
+          audioChunks = [];
+
+          var mimeType = 'audio/webm';
+          if (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+          } else if (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+          }
+
+          mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+
+          mediaRecorder.ondataavailable = function (evt) {
+            if (evt.data && evt.data.size > 0) {
+              audioChunks.push(evt.data);
+            }
+          };
+
+          mediaRecorder.onstop = function () {
+            if (mediaStream) {
+              mediaStream.getTracks().forEach(function (t) { t.stop(); });
+              mediaStream = null;
+            }
+
+            var audioBlob = new Blob(audioChunks, { type: mimeType });
+            if (audioBlob.size === 0) return;
+
+            setTranscribingUI(true);
+
+            var reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = function () {
+              var base64Audio = reader.result;
+              var sttUrl = (apiBaseUrl || '') + '/api/widget/stt';
+
+              fetch(sttUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  audio: base64Audio,
+                  mime_type: mimeType,
+                  language_code: 'unknown'
+                })
+              })
+                .then(function (res) {
+                  return res.json().then(function (data) {
+                    if (!res.ok) throw new Error(data.error || 'Transcription failed');
+                    return data;
+                  });
+                })
+                .then(function (data) {
+                  if (data && data.transcript) {
+                    var cur = inputEl.value.trim();
+                    inputEl.value = cur ? cur + ' ' + data.transcript : data.transcript;
+                    inputEl.focus();
+                  }
+                })
+                .catch(function (err) {
+                  console.warn('[SiteMind Widget Voice STT]:', err.message);
+                })
+                .finally(function () {
+                  setTranscribingUI(false);
+                });
+            };
+          };
+
+          mediaRecorder.start(250);
+          setRecordingUI(true);
+        })
+        .catch(function (err) {
+          console.warn('[SiteMind Widget Mic Access Error]:', err.message);
+          setRecordingUI(false);
+        });
+    });
   }
 
   function setupPanelResize(panel) {

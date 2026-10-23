@@ -108,4 +108,12 @@ router.post('/feedback', async (req, res) => {
   }
 });
 
+const { handleSpeechToText } = require('../services/sttService');
+
+/**
+ * POST /api/widget/stt
+ * Public Speech-to-Text endpoint powered by Sarvam AI
+ */
+router.post('/stt', handleSpeechToText);
+
 module.exports = router;

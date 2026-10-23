@@ -13,6 +13,11 @@ const FALLBACK_MESSAGE = "I can only answer based on verified information from t
 
 const crypto = require('crypto');
 const { retrieve_chunks } = require('../services/retrieval');
+const {
+  processIncomingQuery,
+  formatAnswerInUserLanguage,
+  translateText,
+} = require('../services/translationService');
 
 /**
  * Non-blocking async logger to query_logs table and messages table
@@ -428,6 +433,13 @@ router.get('/analytics/:websiteId', optionalAuth, async (req, res) => {
   }
 });
 
+const { handleSpeechToText } = require('../services/sttService');
+
+/**
+ * POST /api/chat/stt — Speech-to-Text via Sarvam AI API
+ */
+router.post('/stt', handleSpeechToText);
+
 /**
  * POST /api/chat/:tenantId — Module 5 Core RAG Conversation Engine
  */
@@ -446,8 +458,25 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
     return res.status(400).json({ error: 'Query text is required' });
   }
 
+  // Multilingual preprocessing via Sarvam AI (Cross-Lingual RAG)
+  let effectiveSearchQuery = query.trim();
+  let detectedUserLanguage = { languageCode: 'en-IN', scriptCode: 'Latn', isNonEnglish: false };
+
+  try {
+    const langRes = await processIncomingQuery(query);
+    if (langRes && langRes.detectedLanguage) {
+      detectedUserLanguage = langRes.detectedLanguage;
+      effectiveSearchQuery = langRes.englishQuery || query.trim();
+      if (detectedUserLanguage.isNonEnglish) {
+        console.log(`[Chat Multilingual] Detected language ${detectedUserLanguage.languageCode} (${detectedUserLanguage.scriptCode}). Translated search query: "${effectiveSearchQuery}"`);
+      }
+    }
+  } catch (langErr) {
+    console.warn('[Chat Multilingual] Preprocessing notice (non-blocking):', langErr.message);
+  }
+
   // Handle conversational greetings & short follow-ups gracefully
-  const cleanQuery = query.trim().toLowerCase().replace(/[^\w\s]/g, '');
+  const cleanQuery = effectiveSearchQuery.trim().toLowerCase().replace(/[^\w\s]/g, '');
   const greetings = ['hi', 'hello', 'hey', 'heya', 'greetings', 'good morning', 'good afternoon', 'good evening', 'help', 'hey can you answer', 'can you answer', 'can you help me', 'are you there'];
   const clarifications = ['what', 'pardon', 'tell me more', 'more info', 'can you explain', 'explain', 'how'];
 
@@ -463,16 +492,38 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
       }
     } catch (_) {}
 
+    let greetingAnswer = `Hello! Welcome to ${siteName}. Yes, I am here to help you! How can I assist you with information from our site today?`;
+    if (detectedUserLanguage.isNonEnglish) {
+      try {
+        greetingAnswer = await translateText({
+          input: greetingAnswer,
+          sourceLanguageCode: 'en-IN',
+          targetLanguageCode: detectedUserLanguage.languageCode,
+        });
+      } catch (_) {}
+    }
+
     return res.status(200).json({
-      answer: `Hello! Welcome to ${siteName}. Yes, I am here to help you! How can I assist you with information from our site today?`,
+      answer: greetingAnswer,
       sources: [],
       verified: true
     });
   }
 
   if (clarifications.includes(cleanQuery)) {
+    let clarificationAnswer = `Could you please specify which feature or topic from our site you would like to know more about?`;
+    if (detectedUserLanguage.isNonEnglish) {
+      try {
+        clarificationAnswer = await translateText({
+          input: clarificationAnswer,
+          sourceLanguageCode: 'en-IN',
+          targetLanguageCode: detectedUserLanguage.languageCode,
+        });
+      } catch (_) {}
+    }
+
     return res.status(200).json({
-      answer: `Could you please specify which feature or topic from our site you would like to know more about?`,
+      answer: clarificationAnswer,
       sources: [],
       verified: true
     });
@@ -524,13 +575,13 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
     console.warn(`[Chat] Could not query similarity_threshold for tenant ${effectiveTenantUuid}, using default 0.30: ${err.message}`);
   }
 
-  // 3. Stage 1: Embed Query
+  // 3. Stage 1: Embed Query (using translated search query for cross-lingual match)
   let queryEmbedding = null;
   try {
     const embedRes = await fetch(`${EMBEDDING_SERVICE_URL}/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts: [query] })
+      body: JSON.stringify({ texts: [effectiveSearchQuery] })
     });
     if (!embedRes.ok) throw new Error(`HTTP ${embedRes.status}`);
     const embedData = await embedRes.json();
@@ -563,8 +614,19 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
   }
 
   // Helper to construct fallback response & log asynchronously
-  const returnFallback = (reason, verdict = null, genAnswer = null, chunkIds = [], scores = []) => {
+  const returnFallback = async (reason, verdict = null, genAnswer = null, chunkIds = [], scores = []) => {
     const latencyMs = Date.now() - startTime;
+    let fallbackText = FALLBACK_MESSAGE;
+    if (detectedUserLanguage && detectedUserLanguage.isNonEnglish) {
+      try {
+        fallbackText = await translateText({
+          input: FALLBACK_MESSAGE,
+          sourceLanguageCode: 'en-IN',
+          targetLanguageCode: detectedUserLanguage.languageCode,
+        });
+      } catch (_) {}
+    }
+
     logQueryAsync({
       messageId,
       tenantId: effectiveTenantUuid,
@@ -583,7 +645,7 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
 
     return res.status(200).json({
       message_id: messageId,
-      answer: FALLBACK_MESSAGE,
+      answer: fallbackText,
       verified: false,
       fallback_reason: reason,
       retrieval_adaptation: retrievalAdaptation
@@ -673,7 +735,7 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
       threshold,
       topK,
       websiteId: resolvedWebId,
-      queryText: query
+      queryText: effectiveSearchQuery
     });
     console.log(`[Chat Stage 2] Retrieved ${retrievedChunks.length} chunks via retrieve_chunks (adaptation=${retrievalAdaptation || 'none'}) for siteId=${resolvedSiteId}`);
   } catch (err) {
@@ -730,6 +792,10 @@ router.post('/:tenantId', optionalAuth, async (req, res) => {
       ? '\n3. Previous Visitor Feedback:\n   - The visitor was satisfied with previous responses. Maintain the clear, structured, and helpful format.'
       : '');
 
+  const languageDirective = detectedUserLanguage && detectedUserLanguage.isNonEnglish
+    ? `\n3. Language & Multilingual Directive:\n   - The visitor asked in ${detectedUserLanguage.languageCode} (${detectedUserLanguage.scriptCode} script).\n   - Synthesize verified facts from the English context passages and formulate your complete response directly in the visitor's language (${detectedUserLanguage.languageCode}).\n   - Ensure high fluency and natural tone, while keeping course codes, departmental identifiers, and URLs intact.`
+    : `\n3. Language & Multilingual Directive:\n   - If the visitor asked in a non-English language or regional dialect (e.g., Hindi, Gujarati, Hinglish), answer in that EXACT same language and script.`;
+
   const systemPrompt = `You are a helpful, knowledgeable, and professional AI assistant representing this website. Your job is to answer visitor questions clearly, accurately, and conversationally using ONLY the verified context passages provided below.
 
 Response Guidelines:
@@ -743,7 +809,7 @@ Response Guidelines:
    - Answer strictly using the verified context passages. Synthesize relevant details provided across the passages (such as specific cloud platforms, DevOps tools, container orchestration, and CI/CD pipelines). Do not invent facts, speculate, or mention external information.
    - Never output bracketed source markers like "[Context 1]" or "[Source 1]" in your final answer text.
    - Do NOT output internal document filenames (such as "[Drive] filename.pdf" or "filename.pdf") or raw URLs in your response text unless the visitor explicitly asked where to download or find a file or page.
-   - If the context completely lacks information to answer, state politely: "I don't have enough verified information on that topic in our website knowledge base. Please contact our support team for more details."${feedbackDirective}`;
+   - If the context completely lacks information to answer, state politely: "I don't have enough verified information on that topic in our website knowledge base. Please contact our support team for more details."${feedbackDirective}${languageDirective}`;
 
   const userPrompt = `Context passages from this website:
 
@@ -831,6 +897,18 @@ Cleanly formatted answer:`;
   const isFallbackOrRefusal = !generatedAnswer || 
     generatedAnswer.includes("I don't have enough verified information") || 
     generatedAnswer.includes("contact our support team");
+
+  // Post-process multilingual answer: ensure answer is in the user's language
+  if (detectedUserLanguage && detectedUserLanguage.isNonEnglish && generatedAnswer && !isFallbackOrRefusal) {
+    try {
+      generatedAnswer = await formatAnswerInUserLanguage({
+        answer: generatedAnswer,
+        detectedLanguage: detectedUserLanguage
+      });
+    } catch (transErr) {
+      console.warn('[Chat Multilingual] Response translation notice:', transErr.message);
+    }
+  }
 
   let sourcesToReturn = [];
   if (!isFallbackOrRefusal) {

@@ -11,6 +11,7 @@ import {
   Battery,
   Lock,
   Mic,
+  Loader2,
 } from 'lucide-react';
 
 const WidgetLivePreview = ({
@@ -48,6 +49,144 @@ const WidgetLivePreview = ({
   const [panelWidth, setPanelWidth] = useState(285);
   const [panelHeight, setPanelHeight] = useState(320);
   const [isResizing, setIsResizing] = useState(false);
+
+  // Voice Speech-to-Text State (Sarvam AI Saaras v4)
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceNotice, setVoiceNotice] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
+
+  // Cleanup media stream on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  const startVoiceRecording = async () => {
+    setVoiceNotice(null);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setVoiceNotice('Microphone access is not supported in this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      audioChunksRef.current = [];
+
+      let mimeType = 'audio/webm';
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size === 0) {
+          setIsRecording(false);
+          return;
+        }
+
+        setIsTranscribing(true);
+        setVoiceNotice('Transcribing audio with Sarvam AI…');
+
+        try {
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = async () => {
+            const base64Audio = reader.result;
+            try {
+              const res = await fetch('/api/chat/stt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  audio: base64Audio,
+                  mime_type: mimeType,
+                  language_code: 'unknown',
+                }),
+              });
+
+              const data = await res.json();
+              if (!res.ok) {
+                const errMsg = data.error || 'Speech transcription failed';
+                setVoiceNotice(errMsg);
+                setTimeout(() => setVoiceNotice(null), 6000);
+                return;
+              }
+
+              if (data.transcript) {
+                setInput((prev) => (prev ? `${prev.trim()} ${data.transcript}` : data.transcript));
+                setVoiceNotice(null);
+              } else {
+                setVoiceNotice('No speech recognized. Please try again.');
+                setTimeout(() => setVoiceNotice(null), 4000);
+              }
+            } catch (netErr) {
+              setVoiceNotice(`Transcription failed: ${netErr.message}`);
+              setTimeout(() => setVoiceNotice(null), 5000);
+            } finally {
+              setIsTranscribing(false);
+            }
+          };
+        } catch (convErr) {
+          setVoiceNotice(`Audio processing error: ${convErr.message}`);
+          setIsTranscribing(false);
+          setTimeout(() => setVoiceNotice(null), 4000);
+        }
+      };
+
+      recorder.start(250);
+      setIsRecording(true);
+      setVoiceNotice('Listening… Speak now, click mic again to finish.');
+    } catch (err) {
+      console.error('[Voice Recording Error]:', err);
+      setIsRecording(false);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setVoiceNotice('Microphone permission denied. Please allow microphone access.');
+      } else {
+        setVoiceNotice(`Microphone error: ${err.message}`);
+      }
+      setTimeout(() => setVoiceNotice(null), 5000);
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const handleVoiceToggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isTranscribing) return;
+    if (isRecording) {
+      stopVoiceRecording();
+    } else {
+      startVoiceRecording();
+    }
+  };
 
   const handleStartResize = (e) => {
     e.preventDefault();
@@ -347,6 +486,24 @@ const WidgetLivePreview = ({
                     )}
                   </div>
 
+                  {/* Voice Notification / Status Toast */}
+                  {voiceNotice && (
+                    <div className="px-3 py-1.5 bg-[#09090B] border-t border-zinc-800 text-[10px] text-zinc-300 flex items-center justify-between gap-1 select-none animate-fadeIn">
+                      <span className="truncate flex items-center gap-1.5">
+                        {isRecording && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />}
+                        {isTranscribing && <Loader2 className="w-2.5 h-2.5 animate-spin text-zinc-400" />}
+                        {voiceNotice}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setVoiceNotice(null)}
+                        className="text-zinc-500 hover:text-white px-1 text-[10px]"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
                   {/* Chat Input form */}
                   <form
                     onSubmit={handleSend}
@@ -358,17 +515,50 @@ const WidgetLivePreview = ({
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={placeholderText || 'Type a message…'}
+                        placeholder={
+                          isRecording
+                            ? 'Listening… (speak now)'
+                            : isTranscribing
+                            ? 'Transcribing audio…'
+                            : placeholderText || 'Type a message…'
+                        }
                         style={{ color: textColor, backgroundColor: inputBg }}
-                        className="w-full pl-3 pr-8 py-1.5 rounded-full text-[11px] outline-none border border-transparent focus:border-zinc-400 transition-colors placeholder:text-zinc-400"
+                        className={`w-full pl-3 pr-8 py-1.5 rounded-full text-[11px] outline-none border transition-colors ${
+                          isRecording
+                            ? 'border-red-500 ring-1 ring-red-500/40'
+                            : 'border-transparent focus:border-zinc-400'
+                        } placeholder:text-zinc-400`}
                       />
                       <button
                         type="button"
-                        aria-label="Voice input"
-                        title="Voice input (Sarvam AI coming soon)"
-                        className="absolute right-2 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer p-0.5 rounded-full hover:bg-white/10"
+                        onClick={handleVoiceToggle}
+                        disabled={isTranscribing}
+                        aria-label={isRecording ? 'Stop voice recording' : 'Start voice input (Sarvam AI)'}
+                        title={
+                          isTranscribing
+                            ? 'Transcribing with Sarvam AI…'
+                            : isRecording
+                            ? 'Click to stop recording (listening…)'
+                            : 'Voice input (powered by Sarvam AI)'
+                        }
+                        className={`absolute right-2 p-1 rounded-full transition-all cursor-pointer ${
+                          isRecording
+                            ? 'text-red-500 bg-red-500/15 animate-pulse'
+                            : isTranscribing
+                            ? 'text-zinc-400 cursor-wait'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/10'
+                        }`}
                       >
-                        <Mic className="w-3.5 h-3.5" />
+                        {isTranscribing ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />
+                        ) : isRecording ? (
+                          <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                            <Mic className="w-3.5 h-3.5 text-red-500 relative" />
+                          </span>
+                        ) : (
+                          <Mic className="w-3.5 h-3.5" />
+                        )}
                       </button>
                     </div>
                     <button
@@ -506,6 +696,24 @@ const WidgetLivePreview = ({
                     )}
                   </div>
 
+                  {/* Mobile Voice Notification / Status */}
+                  {voiceNotice && (
+                    <div className="px-2.5 py-1 bg-[#09090B] border-t border-zinc-800 text-[9px] text-zinc-300 flex items-center justify-between gap-1 select-none">
+                      <span className="truncate flex items-center gap-1">
+                        {isRecording && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />}
+                        {isTranscribing && <Loader2 className="w-2.5 h-2.5 animate-spin text-zinc-400" />}
+                        {voiceNotice}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setVoiceNotice(null)}
+                        className="text-zinc-500 hover:text-white px-1 text-[9px]"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
                   {/* Input form */}
                   <form
                     onSubmit={handleSend}
@@ -517,17 +725,50 @@ const WidgetLivePreview = ({
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={placeholderText || 'Type a message…'}
+                        placeholder={
+                          isRecording
+                            ? 'Listening… (speak now)'
+                            : isTranscribing
+                            ? 'Transcribing…'
+                            : placeholderText || 'Type a message…'
+                        }
                         style={{ color: textColor, backgroundColor: inputBg }}
-                        className="w-full pl-2.5 pr-7 py-1.5 rounded-full text-[10px] outline-none border border-transparent focus:border-zinc-400 transition-colors placeholder:text-zinc-400"
+                        className={`w-full pl-2.5 pr-7 py-1.5 rounded-full text-[10px] outline-none border transition-colors ${
+                          isRecording
+                            ? 'border-red-500 ring-1 ring-red-500/40'
+                            : 'border-transparent focus:border-zinc-400'
+                        } placeholder:text-zinc-400`}
                       />
                       <button
                         type="button"
-                        aria-label="Voice input"
-                        title="Voice input (Sarvam AI coming soon)"
-                        className="absolute right-1.5 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer p-0.5 rounded-full hover:bg-white/10"
+                        onClick={handleVoiceToggle}
+                        disabled={isTranscribing}
+                        aria-label={isRecording ? 'Stop voice recording' : 'Start voice input (Sarvam AI)'}
+                        title={
+                          isTranscribing
+                            ? 'Transcribing with Sarvam AI…'
+                            : isRecording
+                            ? 'Click to stop recording (listening…)'
+                            : 'Voice input (powered by Sarvam AI)'
+                        }
+                        className={`absolute right-1.5 p-0.5 rounded-full transition-all cursor-pointer ${
+                          isRecording
+                            ? 'text-red-500 bg-red-500/15 animate-pulse'
+                            : isTranscribing
+                            ? 'text-zinc-400 cursor-wait'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/10'
+                        }`}
                       >
-                        <Mic className="w-3 h-3" />
+                        {isTranscribing ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-zinc-400" />
+                        ) : isRecording ? (
+                          <span className="relative flex h-3 w-3 items-center justify-center">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                            <Mic className="w-3 h-3 text-red-500 relative" />
+                          </span>
+                        ) : (
+                          <Mic className="w-3 h-3" />
+                        )}
                       </button>
                     </div>
                     <button
